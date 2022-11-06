@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: 0BSD
 //
 
-import tables from "./tables.json" assert { type: "json" };
+import tables from './tables.json' assert { type: 'json' };
 
 const TOTAL_SAMPLES = 5;
 
@@ -56,7 +56,11 @@ interface IChannel {
   instIndex: number;
 }
 
-function parseEnvelope(envelope: IEnvelope, low: number, high: number): IInstrumentEnvelope | string {
+function parseEnvelope(
+  envelope: IEnvelope,
+  low: number,
+  high: number,
+): IInstrumentEnvelope | string {
   const env: number[] = [];
   let attack = -1;
   let sustain = 0;
@@ -85,7 +89,7 @@ function parseEnvelope(envelope: IEnvelope, low: number, high: number): IInstrum
     }
   }
   if (!gotRel) {
-    sustain += 1
+    sustain += 1;
   }
   if (attack < 0) {
     return 'Missing SUS';
@@ -93,26 +97,26 @@ function parseEnvelope(envelope: IEnvelope, low: number, high: number): IInstrum
   if (env.length >= 256) {
     throw new Error(`Envelope too large; max length of 255`);
   }
-  return {env, attack, sustain};
+  return { env, attack, sustain };
 }
 
 function isEnd(cmd: number) {
   return (cmd & 0x7f) === 2;
 }
 
-const tempoTable: {tempo: number; start: number}[] = [];
+const tempoTable: { tempo: number; start: number }[] = [];
 const bendTable: number[] = [];
 for (let i = 0; i < 64; i++) {
   const idealTempo = (i + 18) * 10 / 4;
   const start = Math.round(32768 * 60 * 256 / (608 * 16 * idealTempo));
   const tempo = 32768 * 60 * 256 / (608 * 16 * start);
-  tempoTable.push({tempo, start});
+  tempoTable.push({ tempo, start });
 
   const framesPer16thNote = start / 256;
   const pitchDivision = 16;
-  for (let dpitchAbs = 1; dpitchAbs <= 128; dpitchAbs++){
+  for (let dpitchAbs = 1; dpitchAbs <= 128; dpitchAbs++) {
     const bendCounterMax = Math.floor(65536 * framesPer16thNote / (dpitchAbs * pitchDivision));
-    if (bendCounterMax < 0 || bendCounterMax >= 65536){
+    if (bendCounterMax < 0 || bendCounterMax >= 65536) {
       throw new Error('bendTable overflow');
     }
     bendTable.push(bendCounterMax);
@@ -131,9 +135,9 @@ const lowpassIndexTable = [
 ];
 
 export class Song {
-  channelCount: number = 6;
+  channelCount = 6;
   instruments: IInstrument[] = [];
-  pcmMapping: number[] = Array.from({length: 120}).map(() => 0);
+  pcmMapping: number[] = Array.from({ length: 120 }).map(() => 0);
   patterns: IPatternLine[][] = [];
   sequences: ISequence[] = [];
 
@@ -207,7 +211,7 @@ export class Song {
       }
 
       // instruments
-      for (let i= 0; i < instsLength; i++) {
+      for (let i = 0; i < instsLength; i++) {
         next = instOffset[i];
         const wave = u16();
         const vattack = u8();
@@ -233,13 +237,13 @@ export class Song {
           volume: {
             env: venv,
             attack: vattack,
-            sustain: vsustain
+            sustain: vsustain,
           },
           pitch: {
             env: penv,
             attack: pattack,
-            sustain: psustain
-          }
+            sustain: psustain,
+          },
         });
       }
 
@@ -262,7 +266,7 @@ export class Song {
         while (true) {
           let gotEnd = false;
           const commands: number[] = [];
-          for (let ch = 0; ch < result.channelCount; ch++){
+          for (let ch = 0; ch < result.channelCount; ch++) {
             const c = u16();
             gotEnd = gotEnd || isEnd(c);
             commands.push(c);
@@ -317,12 +321,12 @@ export class Song {
 
     // header
     out.push(0xfb, 0x67, 0x76, 0x73); // magic 'gvs'
-    u8(0);                            // version
-    u8(this.channelCount);            // channel count
-    u16(0);                           // reserved
-    u8(this.instruments.length);      // instruments length
-    u8(this.sequences.length);        // sequences length
-    u16(this.patterns.length);        // patterns length
+    u8(0); // version
+    u8(this.channelCount); // channel count
+    u16(0); // reserved
+    u8(this.instruments.length); // instruments length
+    u8(this.sequences.length); // sequences length
+    u16(this.patterns.length); // patterns length
     const instTableOffset = rewrite32();
     const seqTableOffset = rewrite32();
     const patTableOffset = rewrite32();
@@ -355,16 +359,16 @@ export class Song {
 
     // instruments
     for (let i = 0; i < this.instruments.length; i++) {
-      const {wave, volume, pitch} = this.instruments[i];
+      const { wave, volume, pitch } = this.instruments[i];
       const instLabel = out.length;
       instOffset[i](instLabel);
-      u16(wave);              // wave
-      u8(volume.attack);      // volume attack
-      u8(volume.sustain);     // volume sustain
-      u8(volume.env.length);  // volume length
-      u8(pitch.attack);       // pitch attack
-      u8(pitch.sustain);      // pitch sustain
-      u8(pitch.env.length);   // pitch length
+      u16(wave); // wave
+      u8(volume.attack); // volume attack
+      u8(volume.sustain); // volume sustain
+      u8(volume.env.length); // volume length
+      u8(pitch.attack); // pitch attack
+      u8(pitch.sustain); // pitch sustain
+      u8(pitch.env.length); // pitch length
       const volumeOffset = rewrite16();
       const pitchOffset = rewrite16();
       volumeOffset(out.length - instLabel);
@@ -380,8 +384,8 @@ export class Song {
     }
 
     // sequences
-    for (let i = 0; i < this.sequences.length; i++){
-      const {patterns, loopIndex} = this.sequences[i];
+    for (let i = 0; i < this.sequences.length; i++) {
+      const { patterns, loopIndex } = this.sequences[i];
       seqOffset[i](out.length);
       u16(patterns.length);
       u16(loopIndex);
@@ -394,7 +398,7 @@ export class Song {
     for (let i = 0; i < this.patterns.length; i++) {
       const pattern = this.patterns[i];
       patOffset[i](out.length);
-      for (const {commands, wait} of pattern) {
+      for (const { commands, wait } of pattern) {
         let gotEnd = false;
         for (const c of commands) {
           u16(c);
@@ -438,7 +442,8 @@ export class Song {
       const s = pcmMapping[i];
       if (s < 0 || s >= TOTAL_SAMPLES) {
         throw new Error(
-          `Invalid PCM sample at index ${i}; must be between 0 and ${TOTAL_SAMPLES - 1}`);
+          `Invalid PCM sample at index ${i}; must be between 0 and ${TOTAL_SAMPLES - 1}`,
+        );
       }
     }
     this.pcmMapping = pcmMapping;
@@ -462,7 +467,8 @@ export class Song {
         const parts = line.split('  ');
         if (parts.length !== this.channelCount + 1) {
           throw new Error(
-            `Bad line in pattern ${pi}; expecting ${this.channelCount} channels: ${rawLine}`);
+            `Bad line in pattern ${pi}; expecting ${this.channelCount} channels: ${rawLine}`,
+          );
         }
 
         // parse time
@@ -481,9 +487,9 @@ export class Song {
         if (plines.length <= 0 && wait !== 0) {
           throw new Error(`First row must start on time 00: ${rawLine}`);
         }
-        if (plines.length > 0){
+        if (plines.length > 0) {
           // see if we can remove last line
-          if (plines.length > 1 && plines[plines.length - 1].commands.every((c) => c === 0)){
+          if (plines.length > 1 && plines[plines.length - 1].commands.every((c) => c === 0)) {
             plines.pop();
           }
           plines[plines.length - 1].wait += wait;
@@ -502,7 +508,7 @@ export class Song {
           // - end pattern     END 0x02
           // - reserved        ??? 0x03-0x07
           // - note on         C#5 0x08-0x7F   or 001-119
-          let note = 0
+          let note = 0;
           if (inst[0] == '---') {
             note = 0;
           } else if (inst[0] == 'OFF') {
@@ -519,18 +525,18 @@ export class Song {
               note += 8;
             } else {
               const noteStr = inst[0].substr(0, 2);
-              if      (noteStr == "C-"                   ){ note = 0x08; }
-              else if (noteStr == "C#" || noteStr == "DB"){ note = 0x09; }
-              else if (noteStr == "D-"                   ){ note = 0x0a; }
-              else if (noteStr == "D#" || noteStr == "EB"){ note = 0x0b; }
-              else if (noteStr == "E-"                   ){ note = 0x0c; }
-              else if (noteStr == "F-"                   ){ note = 0x0d; }
-              else if (noteStr == "F#" || noteStr == "GB"){ note = 0x0e; }
-              else if (noteStr == "G-"                   ){ note = 0x0f; }
-              else if (noteStr == "G#" || noteStr == "AB"){ note = 0x10; }
-              else if (noteStr == "A-"                   ){ note = 0x11; }
-              else if (noteStr == "A#" || noteStr == "BB"){ note = 0x12; }
-              else if (noteStr == "B-"                   ){ note = 0x13; }
+              if (noteStr == 'C-') note = 0x08;
+              else if (noteStr == 'C#' || noteStr == 'DB') note = 0x09;
+              else if (noteStr == 'D-') note = 0x0a;
+              else if (noteStr == 'D#' || noteStr == 'EB') note = 0x0b;
+              else if (noteStr == 'E-') note = 0x0c;
+              else if (noteStr == 'F-') note = 0x0d;
+              else if (noteStr == 'F#' || noteStr == 'GB') note = 0x0e;
+              else if (noteStr == 'G-') note = 0x0f;
+              else if (noteStr == 'G#' || noteStr == 'AB') note = 0x10;
+              else if (noteStr == 'A-') note = 0x11;
+              else if (noteStr == 'A#' || noteStr == 'BB') note = 0x12;
+              else if (noteStr == 'B-') note = 0x13;
               else {
                 throw new Error(`Unknown note ${inst[0]}: ${parts[ch]}`);
               }
@@ -538,7 +544,7 @@ export class Song {
               if (oct < 0) {
                 throw new Error(`Unknown octave ${inst[0]}: ${parts[ch]}`);
               }
-              note += oct * 12
+              note += oct * 12;
             }
             if (note < 0x08 || note > 0x7f) {
               throw new Error(`Note out of range: ${parts[ch]}`);
@@ -560,27 +566,29 @@ export class Song {
           // 101 set tempo (045-202)
           // 110 ???
           // 111 ???
-          let effect = 0
-          if (inst[1] == "---") {
-            effect = 0
-          } else if (inst[1] == "V00") {
-            effect = 1
-          } else if (inst[1] == "D00") {
-            effect = 2
-          } else if (inst[1] == "B00") {
-            effect = 3
-          } else if (inst[1] == "I00") {
-            effect = 4
-          } else if (inst[1] == "PCM") {
-            effect = 5
+          let effect = 0;
+          if (inst[1] == '---') {
+            effect = 0;
+          } else if (inst[1] == 'V00') {
+            effect = 1;
+          } else if (inst[1] == 'D00') {
+            effect = 2;
+          } else if (inst[1] == 'B00') {
+            effect = 3;
+          } else if (inst[1] == 'I00') {
+            effect = 4;
+          } else if (inst[1] == 'PCM') {
+            effect = 5;
           } else if (!isNaN(parseInt(inst[1], 10))) {
             const tempo = parseInt(inst[1], 10);
             if (isNaN(tempo) || tempo < 45 || tempo > 202) {
               throw new Error(`Unknown tempo ${inst[1]}: ${parts[ch]}`);
             }
-            let best = 0
+            let best = 0;
             for (let i = 0; i < tempoTable.length; i++) {
-              if (Math.abs(tempoTable[i].tempo - tempo) < Math.abs(tempoTable[best].tempo - tempo)) {
+              if (
+                Math.abs(tempoTable[i].tempo - tempo) < Math.abs(tempoTable[best].tempo - tempo)
+              ) {
                 best = i;
               }
             }
@@ -592,14 +600,14 @@ export class Song {
               throw new Error(`Bad payload for command ${cmd}: ${parts[ch]}`);
             }
             payload -= 1;
-            if (cmd == "V") {
+            if (cmd == 'V') {
               effect = 0x040 | payload;
-            } else if (cmd == "D") {
+            } else if (cmd == 'D') {
               effect = 0x080 | payload;
-            } else if (cmd == "B") {
+            } else if (cmd == 'B') {
               effect = 0x0c0 | payload;
-            } else if (cmd == "I") {
-              if (payload + 1 >= this.instruments.length){
+            } else if (cmd == 'I') {
+              if (payload + 1 >= this.instruments.length) {
                 throw new Error(`Instrument ${payload + 1} not defined: ${parts[ch]}`);
               }
               effect = 0x100 | payload;
@@ -617,7 +625,7 @@ export class Song {
       }
       result.push(plines);
     }
-    if (result.length >= 65536){
+    if (result.length >= 65536) {
       throw new Error(`Too many patterns; max of 65535`);
     }
     this.patterns = result;
@@ -650,7 +658,7 @@ export class Song {
       }
       result.push({ patterns, loopIndex });
     }
-    if (result.length >= 256){
+    if (result.length >= 256) {
       throw new Error('Too many sequences; max of 255');
     }
     for (let i = 0; i < result.length; i++) {
@@ -662,7 +670,7 @@ export class Song {
     return this;
   }
 
-  render(loop: number, sequence: number): number[] {
+  render(_loop: number, sequence: number): number[] {
     if (sequence < 0 || sequence >= this.sequences.length) {
       throw new Error(`Invalid sequence: ${sequence}`);
     }
@@ -682,7 +690,7 @@ export class Song {
         delay: 0,
         delayedNote: {
           left: 0,
-          note: 0
+          note: 0,
         },
         delayedBend: {
           left: 0,
@@ -697,7 +705,7 @@ export class Song {
         bendCounterMax: 0,
         envPitchIndex: 0,
         phase: 0,
-        instIndex: -1
+        instIndex: -1,
       });
     }
 
@@ -718,13 +726,13 @@ export class Song {
 
     const setBend = (ch: number, duration: number, note: number, immediately: boolean) => {
       const chan = channels[ch];
-      if (!immediately && chan.delay > 0){
+      if (!immediately && chan.delay > 0) {
         chan.delayedBend.left = chan.delay;
         chan.delayedBend.duration = duration;
         chan.delayedBend.note = note;
       } else {
         chan.targetPitch = note << 4;
-        if (duration <= 0){
+        if (duration <= 0) {
           chan.basePitch = note << 4;
         } else {
           const dpitchAbs = Math.abs(chan.targetPitch - chan.basePitch) >> 4;
@@ -739,13 +747,13 @@ export class Song {
     };
 
     // render song
-    for (let frames = 0; frames < 100; frames++){
+    for (let frames = 0; frames < 100; frames++) {
       // advance tick counter
       tickLeft -= 256;
       while (tickLeft <= 0) {
         // perform tick
         let endFlag = false;
-        for (let ch = 0; ch < this.channelCount; ch++){
+        for (let ch = 0; ch < this.channelCount; ch++) {
           const chan = channels[ch];
           const instruction = this.patterns[patIndex][rowIndex].commands[ch];
 
@@ -754,9 +762,9 @@ export class Song {
           const payload = (instruction >> 7) & 0x3f;
           const note = instruction & 0x7f;
           let didBend = false;
-          switch (effect){
+          switch (effect) {
             case 0: // command
-              switch (payload){
+              switch (payload) {
                 case 0: // continue
                   break;
                 case 1: // set volume 0
@@ -849,12 +857,12 @@ export class Song {
       }
 
       // render frame
-      const output = Array.from({length: 608}).map(() => 0);
-      for (let ch = 0; ch < this.channelCount; ch++){
+      const output = Array.from({ length: 608 }).map(() => 0);
+      for (let ch = 0; ch < this.channelCount; ch++) {
         const chan = channels[ch];
         if (chan.state === 'off' || chan.instIndex === -1) {
           continue;
-        } else if (chan.instIndex === -2){
+        } else if (chan.instIndex === -2) {
           // TODO: PCM
         } else {
           const inst = this.instruments[chan.instIndex];
@@ -864,7 +872,7 @@ export class Song {
           const dphase = freq * 2048 / 32768;
           if (inst.wave === 11) {
             // random noise
-            for (let i = 0; i < 608; i++){
+            for (let i = 0; i < 608; i++) {
               const w = tables[2048 * (11 * 11) + Math.floor(chan.phase)];
               output[i] += finalVolume * w;
               chan.phase = (chan.phase + dphase) % (1 << 15);
@@ -872,7 +880,7 @@ export class Song {
           } else {
             // oscillator
             const lp = lowpassIndexTable[Math.floor(finalPitch / 16)];
-            for (let i = 0; i < 608; i++){
+            for (let i = 0; i < 608; i++) {
               const w = tables[2048 * (11 * inst.wave + lp) + Math.floor(chan.phase)];
               output[i] += finalVolume * w;
               chan.phase = (chan.phase + dphase) % 2048;
@@ -882,19 +890,22 @@ export class Song {
       }
 
       // write output
-      for (let i = 0; i < output.length; i++){
+      for (let i = 0; i < output.length; i++) {
         out.push(
-          Math.min(32767, Math.max(-32768, Math.round(output[i] * (output[i] < 0 ? 32768 : 32767))))
+          Math.min(
+            32767,
+            Math.max(-32768, Math.round(output[i] * (output[i] < 0 ? 32768 : 32767))),
+          ),
         );
       }
 
-      for (let ch = 0; ch < this.channelCount; ch++){
+      for (let ch = 0; ch < this.channelCount; ch++) {
         const chan = channels[ch];
 
         // advance envelopes
-        if (chan.state !== 'off' && chan.instIndex >= 0){
+        if (chan.state !== 'off' && chan.instIndex >= 0) {
           const inst = this.instruments[chan.instIndex];
-          if (chan.state === 'rel'){
+          if (chan.state === 'rel') {
             chan.envVolumeIndex++;
             if (chan.envVolumeIndex >= inst.volume.env.length) {
               chan.state = 'off';
@@ -914,25 +925,25 @@ export class Song {
         }
 
         // check for delayed notes
-        if (chan.delayedNote.left > 0){
+        if (chan.delayedNote.left > 0) {
           chan.delayedNote.left--;
-          if (chan.delayedNote.left <= 0){
+          if (chan.delayedNote.left <= 0) {
             noteOn(ch, chan.delayedNote.note, true);
           }
         }
-        if (chan.delayedBend.left > 0){
+        if (chan.delayedBend.left > 0) {
           chan.delayedBend.left--;
-          if (chan.delayedBend.left <= 0){
+          if (chan.delayedBend.left <= 0) {
             setBend(ch, chan.delayedBend.duration, chan.delayedBend.note, true);
           }
         }
 
         // pitch bend
-        if (chan.basePitch !== chan.targetPitch){
+        if (chan.basePitch !== chan.targetPitch) {
           chan.bendCounter += 65536;
-          while (chan.bendCounter >= chan.bendCounterMax){
+          while (chan.bendCounter >= chan.bendCounterMax) {
             chan.bendCounter -= chan.bendCounterMax;
-            if (chan.basePitch < chan.targetPitch){
+            if (chan.basePitch < chan.targetPitch) {
               chan.basePitch++;
             } else {
               chan.basePitch--;

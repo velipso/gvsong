@@ -6,7 +6,7 @@
 //
 
 import { Song } from './song.ts';
-import { makeFromFile, defaultFileSystemContext } from './make.ts';
+import { defaultFileSystemContext, makeFromFile } from './make.ts';
 
 export interface IRenderArgs {
   input: string;
@@ -23,8 +23,7 @@ export async function render({ input, output, loop, sequence }: IRenderArgs): Pr
     const header = new Uint8Array(4);
     const bytesRead = await file.read(header);
     Deno.close(file.rid);
-    const data =
-      (
+    const data = (
         bytesRead === 4 &&
         header[0] == 0xfb &&
         header[1] == 0x67 &&
@@ -50,19 +49,19 @@ export async function render({ input, output, loop, sequence }: IRenderArgs): Pr
       out.push((n >> 24) & 0xff);
     };
 
-    u32(0x46464952);           // 'RIFF'
+    u32(0x46464952); // 'RIFF'
     u32(wave.length * 2 + 36); // file size minus 'RIFF'
-    u32(0x45564157);           // 'WAVE'
-    u32(0x20746d66);           // 'fmt '
-    u32(16);                   // size of fmt chunk
-    u16(1);                    // audio format
-    u16(1);                    // mono
-    u32(32768);                // sample rate
-    u32(32768 * 2);            // bytes per second
-    u16(2);                    // block align
-    u16(16);                   // bits per sample
-    u32(0x61746164);           // 'data'
-    u32(wave.length * 2);      // size of data chunk
+    u32(0x45564157); // 'WAVE'
+    u32(0x20746d66); // 'fmt '
+    u32(16); // size of fmt chunk
+    u16(1); // audio format
+    u16(1); // mono
+    u32(32768); // sample rate
+    u32(32768 * 2); // bytes per second
+    u16(2); // block align
+    u16(16); // bits per sample
+    u32(0x61746164); // 'data'
+    u32(wave.length * 2); // size of data chunk
     for (const w of wave) {
       u16(w);
     }

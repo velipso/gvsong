@@ -128,7 +128,7 @@ function parseRenderArgs(args: string[]): number | IRenderArgs {
     input,
     output: output ?? (new Path()).replaceExt(input, '.wav'),
     loop,
-    sequence
+    sequence,
   };
 }
 

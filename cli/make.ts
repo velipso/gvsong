@@ -28,13 +28,17 @@ export function defaultFileSystemContext(): IFileSystemContext {
     cwd: Deno.cwd(),
     path: new Path(),
     fileType: async (file: string) => {
-      const st = await Deno.stat(file);
-      if (st !== null) {
-        if (st.isFile) {
-          return sink.fstype.FILE;
-        } else if (st.isDirectory) {
-          return sink.fstype.DIR;
+      try {
+        const st = await Deno.stat(file);
+        if (st !== null) {
+          if (st.isFile) {
+            return sink.fstype.FILE;
+          } else if (st.isDirectory) {
+            return sink.fstype.DIR;
+          }
         }
+      } catch (_e) {
+        // result is NONE
       }
       return sink.fstype.NONE;
     },
@@ -47,21 +51,21 @@ export function defaultFileSystemContext(): IFileSystemContext {
 export async function makeFromFile(input: string, fs: IFileSystemContext): Promise<Uint8Array> {
   const scr = sink.scr_new(
     {
-      f_fstype: async (scr: sink.scr, filename: string): Promise<sink.fstype> => {
+      f_fstype: async (_scr: sink.scr, filename: string): Promise<sink.fstype> => {
         return await fs.fileType(filename);
       },
-      f_fsread: async (scr: sink.scr, file: string): Promise<boolean> => {
+      f_fsread: async (_scr: sink.scr, file: string): Promise<boolean> => {
+        let text = '';
         try {
           const data = await fs.readBinaryFile(file);
-          let text = '';
           for (const b of data) {
             text += String.fromCharCode(b);
           }
-          await sink.scr_write(scr, text);
-          return true;
-        } catch (e) {
-          return false;
+        } catch (_e) {
+          throw new Error(`Failed to read file: ${file}`);
         }
+        await sink.scr_write(scr, text);
+        return true;
       },
     },
     fs.cwd,
@@ -70,11 +74,15 @@ export async function makeFromFile(input: string, fs: IFileSystemContext): Promi
   );
   sink.scr_addpath(scr, '.');
 
-  sink.scr_incbody(scr, 'gvsong', `
+  sink.scr_incbody(
+    scr,
+    'gvsong',
+    `
     declare gvsong 'github.com/velipso/gvsong'
     var SUS = 'sus', REL = 'rel', LOOP = 'loop'
     enum sq1, sq2, sq3, sq4, sq5, sq6, sq7, sq8, tri, saw, sin, rnd
-  `);
+  `,
+  );
 
   if (!await sink.scr_loadfile(scr, input)) {
     const sinkErr = sink.scr_geterr(scr);
@@ -105,14 +113,15 @@ export async function makeFromFile(input: string, fs: IFileSystemContext): Promi
     ctx,
     'github.com/velipso/gvsong',
     null,
-    async (ctx: sink.ctx, args: sink.val[]): Promise<sink.val> => {
+    async (_ctx: sink.ctx, args: sink.val[]): Promise<sink.val> => {
       if (loadedSong) {
         throw new Error('Cannot define multiple songs');
       }
       loadedSong = true;
       if (args.length !== 4) {
         throw new Error(
-          'Expecting 4 arguments: gvsong <instruments>, <pcm>, <sequences>, <patterns>');
+          'Expecting 4 arguments: gvsong <instruments>, <pcm>, <sequences>, <patterns>',
+        );
       }
 
       const insts = args[0];
@@ -169,7 +178,7 @@ export async function makeFromFile(input: string, fs: IFileSystemContext): Promi
       song.setSequences(seqs as (number | 'loop')[][]);
 
       return sink.NIL;
-    }
+    },
   );
 
   const run = await sink.ctx_run(ctx);

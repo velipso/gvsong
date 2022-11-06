@@ -2,7 +2,7 @@
 // (c) Copyright 2022 Sean Connelly, All Rights Reserved
 //
 
-include 'gvsong'
+include 'gvsong2'
 
 gvsong {
   // instruments
