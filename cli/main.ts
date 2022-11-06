@@ -7,6 +7,7 @@
 
 import { IMakeArgs, make } from './make.ts';
 import { IRenderArgs, render } from './render.ts';
+import { gba, IGbaArgs } from './gba.ts';
 import { argParse, Path } from './deps.ts';
 
 function printVersion() {
@@ -23,6 +24,7 @@ function printHelp() {
 Command Summary:
   make      Convert a .sink song to a .gvsong binary file
   render    Render a .sink or .gvsong into a high-resolution .wav file
+  gba       Generate a .gba ROM file that plays a .sink or .gvsong file
 
 For more help, try:
   gvsong <command> --help`);
@@ -116,7 +118,7 @@ function parseRenderArgs(args: string[]): number | IRenderArgs {
   const output = a.output;
   const loop = parseFloat(a.loop || '3');
   const sequence = parseFloat(a.sequence || '0');
-  if (isNaN(loop)) {
+  if (isNaN(loop) || loop < 1) {
     console.error(`Bad loop value: ${a.loop}`);
     return 1;
   }
@@ -129,6 +131,51 @@ function parseRenderArgs(args: string[]): number | IRenderArgs {
     output: output ?? (new Path()).replaceExt(input, '.wav'),
     loop,
     sequence,
+  };
+}
+
+function printGbaHelp() {
+  console.log(`gvsong gba <input> [-o <output>]
+
+<input>        The input .sink or .gvsong file
+-o <output>    The output file (default: input with .gba extension)`);
+}
+
+function parseGbaArgs(args: string[]): number | IGbaArgs {
+  let badArgs = false;
+  const a = argParse(args, {
+    string: ['output'],
+    boolean: ['help'],
+    alias: { h: 'help', o: 'output' },
+    unknown: (_arg: string, key?: string) => {
+      if (key) {
+        console.error(`Unknown argument: -${key}`);
+        badArgs = true;
+        return false;
+      }
+      return true;
+    },
+  });
+  if (badArgs) {
+    return 1;
+  }
+  if (a.help) {
+    printGbaHelp();
+    return 0;
+  }
+  if (a._.length <= 0) {
+    console.error('Missing input file');
+    return 1;
+  }
+  if (a._.length > 1) {
+    console.error('Can only have one input file');
+    return 1;
+  }
+  const input = a._[0] as string;
+  const output = a.output;
+  return {
+    input,
+    output: output ?? (new Path()).replaceExt(input, '.gba'),
   };
 }
 
@@ -153,6 +200,12 @@ export async function main(args: string[]): Promise<number> {
       return renderArgs;
     }
     return await render(renderArgs);
+  } else if (args[0] === 'gba') {
+    const gbaArgs = parseGbaArgs(args.slice(1));
+    if (typeof gbaArgs === 'number') {
+      return gbaArgs;
+    }
+    return await gba(gbaArgs);
   }
   return 0;
 }

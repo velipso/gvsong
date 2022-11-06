@@ -1,0 +1,19 @@
+//
+// gvsong - Builds and renders songs designed for Game Boy Advance
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvsong
+// SPDX-License-Identifier: 0BSD
+//
+
+.import './irqNone.gvasm' { irqNone }
+.import './irqSwap.gvasm' { irqSwap }
+
+.begin irqHop
+  .arm
+  // set IRQ handler
+  ldr   r0, =0x03007ffc
+  ldr   r1, =irqSwap
+  str   r1, [r0]
+  b     irqNone
+  .pool
+.end

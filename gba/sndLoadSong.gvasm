@@ -1,0 +1,76 @@
+//
+// gvsong - Builds and renders songs designed for Game Boy Advance
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvsong
+// SPDX-License-Identifier: 0BSD
+//
+
+.import './config.gvasm' { IW, channel_st, song_st, songSeq_st }
+.import './main.gvasm' { songBasePointer }
+.import './sndTables.gvasm' { tempoTable }
+.import './memset32.gvasm' { memset32 }
+
+.begin sndLoadSong //(sequence)
+  .thumb
+  push  {lr}
+
+  // zero out synth
+  push  {r0}
+  ldr   r0, =IW.synth
+  movs  r1, #0
+  ldr   r2, =IW.synth._bytes
+  bl    memset32
+  pop   {r2}
+
+  .regs t0-t1, sequence, songBase, r4-r11
+
+  // save sequence
+  ldr   t0, =IW.synth.sequence
+  strx  sequence, [t0] (IW.synth.sequence)
+
+  ldr   songBase, =songBasePointer
+
+  // set pattern pointer to sequence's first pattern
+  ldrx  t0, [songBase, #song_st.seqTableOffset]
+  adds  t0, songBase
+  lsls  sequence, #2
+  ldr   sequence, [t0, sequence]
+  adds  sequence, songBase
+  ldrx  t0, [sequence, #songSeq_st.patterns]
+  lsls  t0, #2
+  ldrx  t1, [songBase, #song_st.patTableOffset]
+  adds  t1, songBase
+  adds  t1, t0
+  ldr   t0, [t1]
+  adds  t0, songBase
+  ldr   t1, =IW.synth.patPointer
+  strx  t0, [t1] (IW.synth.patPointer)
+
+  .regs t0-t2, songBase, r4-r11
+
+  // set tempo to index 0
+  ldr   t1, =tempoTable
+  ldrh  t1, [t1]
+  ldr   t0, =IW.synth.tickStart
+  strx  t1, [t0] (IW.synth.tickStart)
+  ldr   t0, =IW.synth.tickLeft
+  movs  t1, #0
+  strx  t1, [t0] (IW.synth.tickLeft)
+
+  // initialize channels
+  ldr   t0, =IW.synth.channel[0]
+  ldrx  t1, [songBase, #song_st.channelCount]
+nextChannel:
+  // set channel volume
+  movs  t2, #32
+  strx  t2, [t0, #channel_st.chanVolume]
+
+  adds  t0, #channel_st._bytes
+  subs  t1, #1
+  bne   nextChannel
+
+  .regs r0-r11
+  pop   {r0}
+  bx    r0
+  .pool
+.end

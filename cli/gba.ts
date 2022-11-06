@@ -8,14 +8,12 @@
 import { Song } from './song.ts';
 import { defaultFileSystemContext, makeFromFile } from './make.ts';
 
-export interface IRenderArgs {
+export interface IGbaArgs {
   input: string;
   output: string;
-  loop: number;
-  sequence: number;
 }
 
-export async function render({ input, output, loop, sequence }: IRenderArgs): Promise<number> {
+export async function gba({ input, output }: IGbaArgs): Promise<number> {
   const fs = defaultFileSystemContext();
   const file = await Deno.open(input, { read: true });
   const fileInfo = await file.stat();
@@ -36,37 +34,15 @@ export async function render({ input, output, loop, sequence }: IRenderArgs): Pr
     if (song === false) {
       throw new Error(`Bad file format: ${input}`);
     }
-    const wave = song.render(loop, sequence);
-    const out: number[] = [];
-    const u16 = (n: number) => {
-      out.push(n & 0xff);
-      out.push((n >> 8) & 0xff);
-    };
-    const u32 = (n: number) => {
-      out.push(n & 0xff);
-      out.push((n >> 8) & 0xff);
-      out.push((n >> 16) & 0xff);
-      out.push((n >> 24) & 0xff);
-    };
+    const songBin = song.toArray();
 
-    u32(0x46464952); // 'RIFF'
-    u32(wave.length * 2 + 36); // file size minus 'RIFF'
-    u32(0x45564157); // 'WAVE'
-    u32(0x20746d66); // 'fmt '
-    u32(16); // size of fmt chunk
-    u16(1); // audio format
-    u16(1); // mono
-    u32(32768); // sample rate
-    u32(32768 * 2); // bytes per second
-    u16(2); // block align
-    u16(16); // bits per sample
-    u32(0x61746164); // 'data'
-    u32(wave.length * 2); // size of data chunk
-    for (const w of wave) {
-      u16(w);
-    }
+    const romFile = new URL('../gba/main.bin', import.meta.url).pathname;
+    const romBin = await fs.readBinaryFile(romFile);
 
-    await Deno.writeFile(output, new Uint8Array(out));
+    const out = await Deno.open(output, { write: true, create: true, truncate: true });
+    await out.write(romBin);
+    await out.write(songBin);
+    Deno.close(out.rid);
     console.log(`Success! File output to: ${output}`);
   } else {
     throw new Error(`Not a file: ${input}`);

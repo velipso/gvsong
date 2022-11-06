@@ -1,0 +1,123 @@
+//
+// gvsong - Builds and renders songs designed for Game Boy Advance
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvsong
+// SPDX-License-Identifier: 0BSD
+//
+
+.stdlib
+.import './memset32.gvasm' { memset32 }
+.import './memcpy32.gvasm' { memcpy32 }
+.import './config.gvasm' { IW }
+.import './sndInit.gvasm' { sndInit }
+.import './sndFrame.gvasm' { sndFrame }
+.import './sndLoadSong.gvasm' { sndLoadSong }
+
+// GBA header
+.begin
+  .arm
+  b main
+  .logo
+  .title "GVSONG"
+  .str "CUNE77"
+  .i16 150, 0, 0, 0, 0
+  .i8 0 // version
+  .crc
+  .i16 0
+.end
+
+.pool
+.align 4
+.begin iwramStart
+  .base IW.end
+  .arm
+  .include './irqSwap.gvasm'
+  .include './sndFrame.gvasm'
+  .include './delayCycle.gvasm'
+  .include './irqNone.gvasm'
+  .include './irqStartTimer.gvasm'
+  .include './irqHop.gvasm'
+  .include './sndInit.gvasm'
+  .pool
+.end
+iwramEnd:
+.align 4
+
+// main program
+.align 4
+.begin main
+  .arm
+  add   ip, pc, #1
+  bx    ip
+  .thumb
+
+  // disable lcd
+  ldr   r0, =REG_DISPCNT
+  ldr   r1, =0b0000_0000_1000_0000
+  strh  r1, [r0]
+
+  // set cartridge wait state for faster access
+  ldr   r0, =REG_WAITCNT
+  ldr   r1, =0x4317
+  strh  r1, [r0]
+
+  // zero memory
+  ldr   r0, =0x02000000
+  movs  r1, #0
+  ldr   r2, =256 * 1024
+  bl    memset32
+  ldr   r0, =0x03000000
+  movs  r1, #0
+  ldr   r2, =32 * 1024
+  bl    memset32
+
+  // copy over IWRAM functions
+  ldr   r0, =IW.end
+  ldr   r1, =iwramStart
+  ldr   r2, =iwramEnd - iwramStart
+  bl    memcpy32
+
+  // initialize volume and load sequence 0
+  ldr   r0, =IW.masterVolume
+  movs  r1, #16
+  strx  r1, [r0] (IW.masterVolume)
+  movs  r0, #0
+  bl    sndLoadSong
+
+  // initialize sound + IRQ
+  ldr   r0, =sndInit
+  bl    bx_r0
+
+  // setup bg0
+  ldr   r0, =REG_BG0CNT
+  ldr   r1, =0b11_0_01100__1_0_00_10_11
+  strh  r1, [r0]
+
+  // enable bg0
+  ldr   r0, =REG_DISPCNT
+  ldr   r1, =0x0100
+  strh  r1, [r0]
+
+  .begin nextFrame
+    swi   5
+    ldr   r0, =sndFrame
+    bl    bx_r0
+    b     nextFrame
+  .end
+  .pool
+.end
+
+.begin bx_r0
+  .thumb
+  bx    r0
+.end
+
+.align 4
+.include './memcpy32.gvasm'
+.include './memset32.gvasm'
+.include './sndTables.gvasm'
+.include './sndLoadSong.gvasm'
+
+.align 1024
+songBasePointer:
+// song will be concatenated by gvsong at end of ROM

@@ -670,7 +670,7 @@ export class Song {
     return this;
   }
 
-  render(_loop: number, sequence: number): number[] {
+  render(loop: number, sequence: number): number[] {
     if (sequence < 0 || sequence >= this.sequences.length) {
       throw new Error(`Invalid sequence: ${sequence}`);
     }
@@ -683,6 +683,8 @@ export class Song {
     let seqIndex = 0;
     let patIndex = this.sequences[sequence].patterns[0];
     let rowIndex = 0;
+    let loopsLeft = loop - 1;
+    let endOfSongFade = 1;
     const channels: IChannel[] = [];
     for (let i = 0; i < this.channelCount; i++) {
       channels.push({
@@ -697,7 +699,7 @@ export class Song {
           duration: 0,
           note: 0,
         },
-        chanVolume: 1,
+        chanVolume: 0.5,
         envVolumeIndex: 0,
         basePitch: 0,
         targetPitch: 0,
@@ -747,10 +749,10 @@ export class Song {
     };
 
     // render song
-    for (let frames = 0; frames < 100; frames++) {
+    while (true) {
       // advance tick counter
       tickLeft -= 256;
-      while (tickLeft <= 0) {
+      while (tickLeft <= 0 && loopsLeft >= 0) {
         // perform tick
         let endFlag = false;
         for (let ch = 0; ch < this.channelCount; ch++) {
@@ -849,6 +851,14 @@ export class Song {
           seqIndex++;
           if (seqIndex >= this.sequences[sequence].patterns.length) {
             seqIndex = this.sequences[sequence].loopIndex;
+            loopsLeft--;
+            if (loopsLeft < 0) {
+              for (const chan of channels) {
+                if (chan.state === 'on') {
+                  chan.state = 'rel';
+                }
+              }
+            }
           }
           patIndex = this.sequences[sequence].patterns[seqIndex];
           rowIndex = 0;
@@ -866,7 +876,8 @@ export class Song {
           // TODO: PCM
         } else {
           const inst = this.instruments[chan.instIndex];
-          const finalVolume = chan.chanVolume * inst.volume.env[chan.envVolumeIndex] / 16;
+          const finalVolume = endOfSongFade * chan.chanVolume *
+            inst.volume.env[chan.envVolumeIndex] / 16;
           const finalPitch = chan.basePitch + inst.pitch.env[chan.envPitchIndex];
           const freq = 440 * Math.pow(2, ((finalPitch / 16) - 65) / 12);
           const dphase = freq * 2048 / 32768;
@@ -949,6 +960,13 @@ export class Song {
               chan.basePitch--;
             }
           }
+        }
+      }
+
+      if (loopsLeft < 0) {
+        endOfSongFade *= 0.9;
+        if (endOfSongFade < 0.001) {
+          break;
         }
       }
     }

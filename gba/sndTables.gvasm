@@ -1,0 +1,87 @@
+//
+// gvsong - Builds and renders songs designed for Game Boy Advance
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvsong
+// SPDX-License-Identifier: 0BSD
+//
+
+.import './config.gvasm' {
+  sampleRate, pitchDivisionBits, maxPhaseBits, maxPhaseQBits,
+  maxRndSample
+}
+
+oscillatorTable:
+.embed './tables.bin'
+
+tempoTable:
+.script
+  var sampleRate = lookup sampleRate
+  var d = {}
+  for var i: range 64
+    var idealTempo = (i + 18) * 10 / 4
+    var startValue = num.round sampleRate * 60 * 256 / (608 * 16 * idealTempo)
+    var actualTempo = sampleRate * 60 * 256 / (608 * 16 * startValue)
+    list.push d, startValue
+  end
+  u16 d
+.end
+
+lowpassIndexTable: // created by ear *shrug*
+.script
+  var maxPhaseBits = lookup maxPhaseBits
+  var maxPhase = int.shl 1, maxPhaseBits
+  var d = {
+     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+     0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2,
+     2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4,
+     4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6,
+     7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9,10,10,
+    10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,
+    10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,
+    10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,
+  }
+  i16 d * maxPhase * 2
+.end
+
+dphaseTable: // Q11.5
+.script
+  var sampleRate = lookup sampleRate
+  var maxPhaseQBits = lookup maxPhaseQBits
+  var maxPhaseQ = int.shl 1, maxPhaseQBits
+  var pitchDivisionBits = lookup pitchDivisionBits
+  var pitchDivision = int.shl 1, pitchDivisionBits
+  var d = {}
+  for var n: range 0x80 * pitchDivision
+    var freq = 440 * 2^(((n / pitchDivision) - 65) / 12)
+    var dphase = num.round freq * maxPhaseQ / sampleRate
+    var actualFreq = dphase * sampleRate / maxPhaseQ
+    if dphase >= 65536
+      abort 'dphaseTable overflow'
+    end
+    list.push d, dphase
+  end
+  u16 d
+.end
+
+bendTable: // Q0.16
+.script
+  var sampleRate = lookup sampleRate
+  var pitchDivisionBits = lookup pitchDivisionBits
+  var pitchDivision = 1 | int.shl pitchDivisionBits
+  var d = {}
+  for var tempo: range 64
+    var idealTempo = (tempo + 18) * 10 / 4
+    var startValue = num.round sampleRate * 60 * 256 / (608 * 16 * idealTempo)
+    var actualTempo = sampleRate * 60 * 256 / (608 * 16 * startValue)
+    var framesPer16thNote = startValue / 256
+    for var dpitchAbs: range 1, 129
+      var bendCounterMax = 65536 * framesPer16thNote / (dpitchAbs * pitchDivision)
+      bendCounterMax = num.floor bendCounterMax
+      if bendCounterMax < 0 || bendCounterMax >= 65536
+        abort 'bendTable overflow'
+      end
+      list.push d, bendCounterMax
+    end
+  end
+  u16 d
+.end

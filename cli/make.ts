@@ -200,5 +200,6 @@ export async function makeFromFile(input: string, fs: IFileSystemContext): Promi
 export async function make({ input, output }: IMakeArgs): Promise<number> {
   const data = await makeFromFile(input, defaultFileSystemContext());
   await Deno.writeFile(output, data);
+  console.log(`Success! File output to: ${output}`);
   return 0;
 }

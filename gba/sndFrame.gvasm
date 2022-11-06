@@ -1,0 +1,837 @@
+//
+// gvsong - Builds and renders songs designed for Game Boy Advance
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvsong
+// SPDX-License-Identifier: 0BSD
+//
+
+.import './main.gvasm' { songBasePointer }
+.import './config.gvasm' {
+  IW, bufferSize, channel_st, song_st, songInst_st, songSeq_st,
+  pitchDivisionBits, lowpassCount, oscillatorCount, maxPhaseBits,
+  maxPhaseQBits, maxRndSample
+}
+.import './sndTables.gvasm' {
+  volumeTable, instTable, oscillatorTable, dphaseTable,
+  lowpassIndexTable, tempoTable, bendTable
+}
+
+.begin sndFrame
+  .arm
+  ldr   r0, =IW.nextBufferIndex
+  ldr   r1, [r0]
+  cmp   r1, #12
+  bxge  lr
+  .struct S
+    .i32 output
+    .i32 didClear
+    .i32 channelLeft
+  .end
+  push  {r4-r11, lr}
+  .if S._bytes > 0
+    sub   sp, #S._bytes
+  .end
+  ldr   r2, =IW.bufferAddr[0]
+  ldr   r2, [r2, r1]
+  str   r2, [sp, #S.output]
+  adds  r1, #4
+  str   r1, [r0]
+
+  // check for muted sound immediately so we don't access the cart if
+  // sound is completely muted
+  ldr   r0, =IW.masterVolume
+  ldrx  r0, [r0] (IW.masterVolume)
+  cmp   r0, #0
+  beq   muteAllSound
+
+  // advance tick counter
+  .begin advanceTickCounter
+    .regs t0-t3, tickStartPtr, tickStart, tickLeftPtr, tickLeft, r8-r11
+    ldr   tickStartPtr, =IW.synth.tickStart
+    ldr   tickLeftPtr, =IW.synth.tickLeft
+    ldrx  tickLeft, [tickLeftPtr] (IW.synth.tickLeft)
+    subs  tickLeft, #256
+    bgt   doneTick
+runTick:
+    bl    sndTick
+    // sndTick could change tickStart/tickLeft
+    ldrx  tickStart, [tickStartPtr] (IW.synth.tickStart)
+    muls  t0, tickStart
+    ldrx  tickLeft, [tickLeftPtr] (IW.synth.tickLeft)
+    adds  tickLeft, t0
+    cmp   tickLeft, #0
+    ble   runTick
+doneTick:
+    strx  tickLeft, [tickLeftPtr] (IW.synth.tickLeft)
+  .end
+
+  .regs t0, channelPointer, channelLeft, sampleLeft, output, \
+    finalVolume, phase, dphase, instPointer, r9-r11
+
+  ldr   channelPointer, =IW.synth.channel[0]
+  ldr   t0, =songBasePointer
+  ldrx  channelLeft, [t0, #song_st.channelCount]
+  movs  t0, #0
+  str   t0, [sp, #S.didClear]
+  .begin nextChannel
+    ldrx  t0, [channelPointer, #channel_st.state]
+    cmp   t0, #0 // is note completely off?
+    beq   continue
+
+    ldr   output, =IW.bufferTemp
+    movs  sampleLeft, #bufferSize
+
+    // calculate final volume
+    ldrx  instPointer, [channelPointer, #channel_st.instBasePointer]
+    cmp   instPointer, #0 // is instrument 0?
+    beq   continue
+    cmp   instPointer, #4
+    blt   renderPcmInst
+    ldrx  ip, [instPointer, #songInst_st.volumeEnvOffset]
+    adds  ip, instPointer
+    ldrx  t0, [channelPointer, #channel_st.envVolumeIndex]
+    ldrsb finalVolume, [ip, t0]
+    ldrx  t0, [channelPointer, #channel_st.chanVolume]
+    muls  finalVolume, t0
+
+    // calculate final pitch
+    ldrx  ip, [instPointer, #songInst_st.pitchEnvOffset]
+    adds  ip, instPointer
+    ldrx  t0, [channelPointer, #channel_st.envPitchIndex]
+    ldrsb ip, [ip, t0]
+    ldrx  t0, [channelPointer, #channel_st.basePitch]
+    adds  ip, t0
+    lsls  ip, #1
+
+    ldrx  phase, [channelPointer, #channel_st.phase]
+    ldr   dphase, =dphaseTable
+    ldrh  dphase, [dphase, ip]
+
+    ldrx  t0, [instPointer, #songInst_st.wave]
+    cmp   t0, #oscillatorCount + 1
+    beq   renderRndInst
+    // otherwise, oscillator
+
+    .begin renderOscInst
+      .regs t0, channelPointer, channelLeft, sampleLeft, output, \
+        finalVolume, phase, dphase, sample0, sample1, phaseMask, wave
+
+      lsrs  ip, #pitchDivisionBits + 1
+      lsls  ip, #1
+
+      ldr   t0, =lowpassIndexTable
+      ldrh  t0, [t0, ip]
+
+      ldrx  wave, [channelPointer, #channel_st.oscillatorPointer]
+      adds  wave, t0
+
+      // cache channelLeft and load didClear
+      str   channelLeft, [sp, #S.channelLeft]
+      ldr   channelLeft, [sp, #S.didClear]
+
+      ldr   phaseMask, =0xffe0
+      .begin nextSample
+        cmp   channelLeft, #0
+        moveq sample0, #0
+        ldrne sample0, [output]
+        asrs  sample1, sample0, #16
+        lsls  sample0, #16
+        asrs  sample0, #16
+
+        .begin renderOscChannelTwice
+          // render oscillator instrument
+          ands  t0, phase, phaseMask
+          lsrs  t0, #4
+          ldrsh t0, [wave, t0]
+          adds  phase, dphase
+
+          muls  t0, finalVolume
+          asrs  t0, #10
+          adds  sample0, t0
+
+          // and again
+          ands  t0, phase, phaseMask
+          lsrs  t0, #4
+          ldrsh t0, [wave, t0]
+          adds  phase, dphase
+
+          muls  t0, finalVolume
+          asrs  t0, #10
+          adds  sample1, t0
+        .end
+
+        strh  sample0, [output, #0]
+        strh  sample1, [output, #2]
+        adds  output, #4
+
+        subs  sampleLeft, #2
+        bne   nextSample
+      .end
+
+      lsls  phase, #32 - maxPhaseQBits
+      lsrs  phase, #32 - maxPhaseQBits
+      strx  phase, [channelPointer, #channel_st.phase]
+
+      // uncache channelLeft and load didClear
+      movs  channelLeft, #1
+      str   channelLeft, [sp, #S.didClear]
+      ldr   channelLeft, [sp, #S.channelLeft]
+    .end
+    b     continue
+
+    .begin renderRndInst
+      .regs t0, channelPointer, channelLeft, sampleLeft, output, \
+        finalVolume, phase, dphase, sample0, sample1, phaseMask, wave
+
+      ldrx  wave, [channelPointer, #channel_st.oscillatorPointer]
+
+      // cache channelLeft and load didClear
+      str   channelLeft, [sp, #S.channelLeft]
+      ldr   channelLeft, [sp, #S.didClear]
+
+      lsls  dphase, #3
+      ldr   phaseMask, =(maxRndSample - 1) << 17
+      .begin nextSample
+        cmp   channelLeft, #0
+        moveq sample0, #0
+        ldrne sample0, [output]
+        asrs  sample1, sample0, #16
+        lsls  sample0, #16
+        asrs  sample0, #16
+
+        .begin renderRndChannelTwice
+          // render rnd instrument
+          ands  t0, phase, phaseMask
+          lsrs  t0, #16
+          ldrsh t0, [wave, t0]
+          adds  phase, dphase
+
+          muls  t0, finalVolume
+          asrs  t0, #10
+          adds  sample0, t0
+
+          // and again
+          ands  t0, phase, phaseMask
+          lsrs  t0, #16
+          ldrsh t0, [wave, t0]
+          adds  phase, dphase
+
+          muls  t0, finalVolume
+          asrs  t0, #10
+          adds  sample1, t0
+        .end
+
+        strh  sample0, [output, #0]
+        strh  sample1, [output, #2]
+        adds  output, #4
+
+        subs  sampleLeft, #2
+        bne   nextSample
+      .end
+
+      // if maxRndSample is less than 1<<15, then the top bits will
+      // need to be filtered out...
+      .if log2assert(maxRndSample) < 15
+        lsls  phase, #15 - log2assert(maxRndSample)
+        lsrs  phase, #15 - log2assert(maxRndSample)
+      .end
+      strx  phase, [channelPointer, #channel_st.phase]
+
+      // uncache channelLeft and load didClear
+      movs  channelLeft, #1
+      str   channelLeft, [sp, #S.didClear]
+      ldr   channelLeft, [sp, #S.channelLeft]
+    .end
+    b     continue
+
+    .begin renderPcmInst
+      .regs t0, channelPointer, channelLeft, sampleLeft, output, \
+        finalVolume, phase, dphase, sample0, sample1, r10-r11
+
+      // cache channelLeft and load didClear
+      str   channelLeft, [sp, #S.channelLeft]
+      ldr   channelLeft, [sp, #S.didClear]
+
+      ldrx  finalVolume, [channelPointer, #channel_st.chanVolume]
+      .begin nextSample
+        cmp   channelLeft, #0
+        moveq sample0, #0
+        ldrne sample0, [output]
+        asrs  sample1, sample0, #16
+        lsls  sample0, #16
+        asrs  sample0, #16
+
+        // TODO: this
+        .begin renderPcmChannelTwice
+          movs  sample0, #0
+          adds  phase, dphase
+          movs  sample1, #0
+          adds  phase, dphase
+        .end
+
+        strh  sample0, [output, #0]
+        strh  sample1, [output, #2]
+        adds  output, #4
+
+        subs  sampleLeft, #2
+        bne   nextSample
+      .end
+
+      lsls  phase, #32 - maxPhaseQBits
+      lsrs  phase, #32 - maxPhaseQBits
+      strx  phase, [channelPointer, #channel_st.phase]
+
+      // uncache channelLeft and load didClear
+      movs  channelLeft, #1
+      str   channelLeft, [sp, #S.didClear]
+      ldr   channelLeft, [sp, #S.channelLeft]
+    .end
+    // fallthrough
+
+continue:
+    adds  channelPointer, #channel_st._bytes
+    subs  channelLeft, #1
+    bne   nextChannel
+  .end
+
+  .regs t0-t3, musicVol, output, input, sampleLeft, sample, \
+    didClear, r10-r11
+
+  ldr   musicVol, =IW.masterVolume
+  ldrx  musicVol, [musicVol] (IW.masterVolume)
+
+  // restore buffer address from earlier
+  ldr   didClear, [sp, #S.didClear]
+  ldr   output, [sp, #S.output]
+  ldr   input, =IW.bufferTemp
+  movs  sampleLeft, #bufferSize
+  .begin nextSample
+    cmp   didClear, #0
+    moveq sample, #0
+    ldrshne sample, [input]
+
+    // apply global volume
+    muls  t0, sample, musicVol
+    asrs  t0, #4 + 7
+
+    // TODO: sound effects
+
+    // clamp
+    adds  t0, #128
+    cmp   t0, #0
+    movlt t0, #0
+    cmp   t0, #255
+    movgt t0, #255
+    subs  t0, #128
+
+    // write output
+    strb  t0, [output]
+
+    adds  input, #2
+    adds  output, #1
+    subs  sampleLeft, #1
+    bne   nextSample
+  .end
+
+  .regs t0-t3, channelPointer, channelLeft, r6-r11
+
+  // advance envelopes
+  .begin advanceEnvelopes
+    ldr   channelPointer, =IW.synth.channel[0]
+    ldr   t0, =songBasePointer
+    ldrx  channelLeft, [t0, #song_st.channelCount]
+nextChannel:
+    ldrx  t0, [channelPointer, #channel_st.state]
+    cmp   t0, #0
+    beq   continue
+    cmp   t0, #1
+    beq   released
+
+    // otherwise, note is on
+    // advance volume envelope and loop for sustain
+    ldrx  t0, [channelPointer, #channel_st.envVolumeIndex]
+    adds  t0, #1
+    ldrx  t1, [channelPointer, #channel_st.instBasePointer]
+    ldrx  t2, [t1, #songInst_st.volumeEnv.sustain]
+    cmp   t0, t2
+    ldrxge t0, [t1, #songInst_st.volumeEnv.attack]
+    strx  t0, [channelPointer, #channel_st.envVolumeIndex]
+    // advance pitch envelope and loop for sustain
+    ldrx  t0, [channelPointer, #channel_st.envPitchIndex]
+    adds  t0, #1
+    ldrx  t1, [channelPointer, #channel_st.instBasePointer]
+    ldrx  t2, [t1, #songInst_st.pitchEnv.sustain]
+    cmp   t0, t2
+    ldrxge t0, [t1, #songInst_st.pitchEnv.attack]
+    strx  t0, [channelPointer, #channel_st.envPitchIndex]
+    b     continue
+
+released:
+    // advance volume envelope until it runs off
+    ldrx  t0, [channelPointer, #channel_st.envVolumeIndex]
+    adds  t0, #1
+    ldrx  t1, [channelPointer, #channel_st.instBasePointer]
+    ldrx  t2, [t1, #songInst_st.volumeEnv.length]
+    cmp   t0, t2
+    bge   muteNote
+    strx  t0, [channelPointer, #channel_st.envVolumeIndex]
+    // advance pitch envelope
+    ldrx  t0, [channelPointer, #channel_st.envPitchIndex]
+    adds  t0, #1
+    ldrx  t1, [channelPointer, #channel_st.instBasePointer]
+    ldrx  t2, [t1, #songInst_st.pitchEnv.length]
+    cmp   t0, t2
+    subge t0, #1
+    strx  t0, [channelPointer, #channel_st.envPitchIndex]
+    b     continue
+
+continue:
+    // check for delayed notes
+    ldrx  t0, [channelPointer, #channel_st.delayedNote.left]
+    cmp   t0, #0
+    beq   skipDelayedNote
+    subs  t0, #1
+    strx  t0, [channelPointer, #channel_st.delayedNote.left]
+    bne   skipDelayedNote
+    // delay has been hit, so note on
+    // (copied from below)
+    .begin
+      ldrx  t1, [channelPointer, #channel_st.delayedNote.note]
+
+      movs  t0, #2
+      strx  t0, [channelPointer, #channel_st.state]
+      // TODO: maybe some instruments shouldn't reset phase?
+      // ex: saw, tri, sin, pcm => reset   sqX, rnd => no reset
+      movs  t0, #0
+      strx  t0, [channelPointer, #channel_st.phase]
+      strx  t0, [channelPointer, #channel_st.envVolumeIndex]
+      strx  t0, [channelPointer, #channel_st.envPitchIndex]
+      lsls  t0, t1, #pitchDivisionBits
+      strx  t0, [channelPointer, #channel_st.basePitch]
+      strx  t0, [channelPointer, #channel_st.targetPitch]
+    .end
+skipDelayedNote:
+
+    // check for delayed bends
+    ldrx  t0, [channelPointer, #channel_st.delayedBend.left]
+    cmp   t0, #0
+    beq   skipDelayedBend
+    subs  t0, #1
+    strx  t0, [channelPointer, #channel_st.delayedBend.left]
+    bne   skipDelayedBend
+    // delay has been hit, so start bend
+    // (copied from below)
+    .begin
+      .regs t0-t2, payload, channelPointer, channelLeft, r6-r11
+      ldrx  t0, [channelPointer, #channel_st.delayedBend.note]
+      ldrx  payload, [channelPointer, #channel_st.delayedBend.duration]
+
+      lsls  t0, #pitchDivisionBits
+      strx  t0, [channelPointer, #channel_st.targetPitch]
+      cmp   payload, #0
+      beq   bendImmediately
+      ldrx  t1, [channelPointer, #channel_st.basePitch]
+      subs  t0, t1
+      rsblt t0, #0
+      lsrs  t0, #pitchDivisionBits
+      beq   skipBend
+      subs  t0, #1
+      ldr   ip, =IW.synth.tempoIndex
+      ldrx  ip, [ip] (IW.synth.tempoIndex)
+      lsls  ip, #7 + 1
+      lsls  t0, #1
+      adds  ip, t0
+      ldr   t0, =bendTable
+      ldrh  ip, [t0, ip]
+      muls  payload, ip
+      strx  payload, [channelPointer, #channel_st.bendCounterMax]
+      movs  t0, #0
+      strx  t0, [channelPointer, #channel_st.bendCounter]
+      b     skipDelayedBend
+bendImmediately:
+      strx  t0, [channelPointer, #channel_st.basePitch]
+      b     skipDelayedBend
+skipBend:
+      ldrx  t0, [channelPointer, #channel_st.basePitch]
+      strx  t0, [channelPointer, #channel_st.targetPitch]
+      b     skipDelayedBend
+    .end
+skipDelayedBend:
+
+    // pitch bend
+    ldrx  t0, [channelPointer, #channel_st.basePitch]
+    ldrx  t1, [channelPointer, #channel_st.targetPitch]
+    cmp   t0, t1
+    beq   skipBend
+    ldrx  t2, [channelPointer, #channel_st.bendCounter]
+    adds  t2, #65536
+    ldrx  t3, [channelPointer, #channel_st.bendCounterMax]
+performBend:
+    cmp   t2, t3
+    blt   finishBend
+    subs  t2, t3
+    cmp   t0, t1
+    addlt t0, #1
+    subgt t0, #1
+    cmp   t0, t1
+    bne   performBend
+finishBend:
+    strx  t0, [channelPointer, #channel_st.basePitch]
+    strx  t2, [channelPointer, #channel_st.bendCounter]
+skipBend:
+
+    adds  channelPointer, #channel_st._bytes
+    subs  channelLeft, #1
+    bne   nextChannel
+  .end
+
+  .begin return
+    .regs r0-r11
+    .if S._bytes > 0
+      add   sp, #S._bytes
+    .end
+    pop   {r4-r11}
+    pop   {r0}
+    bx    r0
+  .end
+  .begin muteNote
+    movs  t0, #0
+    strx  t0, [channelPointer, #channel_st.state]
+    b     advanceEnvelopes.continue
+  .end
+  .begin muteAllSound
+    ldr   t0, [sp, #S.output]
+    movs  t1, #bufferSize
+    movs  t2, #0
+nextSample:
+    str   t2, [t0]
+    adds  t0, #4
+    subs  t1, #4
+    bne   nextSample
+    b     return
+  .end
+  .pool
+.end
+
+.begin sndTick //() => 16th note wait
+  .arm
+  push  {r4-r7, lr}
+  .regs t0-t3, endFlag, channelLeft, patPointer, channelPointer, r8-r11
+  movs  endFlag, #0
+  ldr   t0, =songBasePointer
+  ldrx  channelLeft, [t0, #song_st.channelCount]
+  ldr   channelPointer, =IW.synth.channel[0]
+  ldr   patPointer, =IW.synth.patPointer
+  ldr   patPointer, [patPointer]
+nextChannel:
+  ldrh  t0, [patPointer]
+  movs  t1, channelPointer
+  cmp   t0, #0
+  blne  sndTickChannel
+  cmp   t0, #0
+  addne endFlag, #1
+  adds  patPointer, #2
+  adds  channelPointer, #channel_st._bytes
+  subs  channelLeft, #1
+  bne   nextChannel
+
+  .regs t0-t3, endFlag, t4, patPointer, delta, r8-r11
+  // delta = *patPointer++
+  ldrh  delta, [patPointer]
+  adds  patPointer, #2
+  ldr   t1, =IW.synth.patPointer
+  str   patPointer, [t1]
+
+  // check if last entry in pattern
+  cmp   endFlag, #0
+  .regs t0-t6, delta, r8-r11
+  bne   nextSeq
+doneNextSeq:
+
+  // return delta
+  movs  t0, delta
+
+  .begin return
+    .regs r0-r11
+    pop   {r4-r7}
+    pop   {r1}
+    bx    r1
+  .end
+
+nextSeq:
+  // end of pattern, load next one
+  .regs t0-t1, songBase, patTable, seqBase, seqIndex, seqIndexPointer, delta, r8-r11
+  ldr   songBase, =songBasePointer
+  ldrx  seqBase, [songBase, #song_st.seqTableOffset]
+  adds  seqBase, songBase
+  ldr   t0, =IW.synth.sequence
+  ldrx  t0, [t0] (IW.synth.sequence)
+  lsls  t0, #2
+  adds  seqBase, t0
+  ldr   seqBase, [seqBase]
+  adds  seqBase, songBase
+  ldrx  patTable, [songBase, #song_st.patTableOffset]
+  adds  patTable, songBase
+  ldr   seqIndexPointer, =IW.synth.seqIndex
+  ldrx  seqIndex, [seqIndexPointer] (IW.synth.seqIndex)
+  adds  seqIndex, #1
+  ldrx  t0, [seqBase, #songSeq_st.patLength]
+  cmp   seqIndex, t0
+  ldrxge seqIndex, [seqBase, #songSeq_st.loopIndex]
+  str   seqIndex, [seqIndexPointer]
+  lsls  seqIndex, #1
+  adds  seqBase, #songSeq_st.patterns
+  ldrh  t0, [seqBase, seqIndex]
+  lsls  t0, #2
+  ldr   t0, [patTable, t0]
+  adds  t0, songBase
+  ldr   t1, =IW.synth.patPointer
+  strx  t0, [t1] (IW.synth.patPointer)
+  b     doneNextSeq
+  .pool
+.end
+
+.begin sndTickChannel //(instruction, channelPointer) => end?
+  .arm
+  push  {r4}
+
+  // apply effect
+  .regs instruction, channelPointer, payload, t0-t1, r5-r11
+  lsrs  t0, instruction, #7
+  ands  payload, t0, #0x3f
+  lsrs  t0, #6
+  lsls  t0, #2
+  ldr   t1, =effectJumpTable
+  ldr   t0, [t1, t0]
+  bx    t0
+effectJumpTable:
+  .u32 effectCommand
+  .u32 setVolume
+  .u32 setDelay
+  .u32 setBend
+  .u32 setInstrument
+  .u32 setTempo
+  .u32 doneEffect // reserved
+  .u32 doneEffect // reserved
+effectCommand:
+  cmp   payload, #7
+  bgt   doneEffect // over 7 is reserved
+  lsls  payload, #2
+  ldr   t0, =effectCommandTable
+  ldr   t0, [t0, payload]
+  bx    t0
+effectCommandTable:
+  .u32  doneEffect
+  .u32  setVolume0
+  .u32  setDelay0
+  .u32  setBend0
+  .u32  setInstrument0
+  .u32  setInstrumentPcm1
+  .u32  setInstrumentPcm2
+  .u32  setInstrumentPcm3
+
+setVolume:
+  adds  payload, #1
+  strx  payload, [channelPointer, #channel_st.chanVolume]
+  b     doneEffect
+setVolume0:
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.chanVolume]
+  b     doneEffect
+
+setDelay:
+  adds  payload, #1
+  strx  payload, [channelPointer, #channel_st.delay]
+  b     doneEffect
+setDelay0:
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.delay]
+  b     doneEffect
+
+setBend:
+  adds  payload, #1
+setBendBody:
+  ldrx  t0, [channelPointer, #channel_st.delay]
+  cmp   t0, #0
+  bne   delayedBend
+  ands  t0, instruction, #0x7f
+  // (copied above for delay)
+  lsls  t0, #pitchDivisionBits
+  strx  t0, [channelPointer, #channel_st.targetPitch]
+  cmp   payload, #0
+  beq   bendImmediately
+  ldrx  t1, [channelPointer, #channel_st.basePitch]
+  subs  t0, t1
+  rsblt t0, #0
+  lsrs  t0, #pitchDivisionBits
+  beq   skipBend
+  subs  t0, #1
+  ldr   ip, =IW.synth.tempoIndex
+  ldrx  ip, [ip] (IW.synth.tempoIndex)
+  lsls  ip, #7 + 1
+  lsls  t0, #1
+  adds  ip, t0
+  ldr   t0, =bendTable
+  ldrh  ip, [t0, ip]
+  muls  payload, ip
+  strx  payload, [channelPointer, #channel_st.bendCounterMax]
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.bendCounter]
+  movs  instruction, #0
+  b     return
+bendImmediately:
+  strx  t0, [channelPointer, #channel_st.basePitch]
+  movs  instruction, #0
+  b     return
+skipBend:
+  ldrx  t0, [channelPointer, #channel_st.basePitch]
+  strx  t0, [channelPointer, #channel_st.targetPitch]
+  movs  instruction, #0
+  b     return
+setBend0:
+  movs  payload, #0
+  b     setBendBody
+delayedBend:
+  strx  t0, [channelPointer, #channel_st.delayedBend.left]
+  strx  payload, [channelPointer, #channel_st.delayedBend.duration]
+  ands  t0, instruction, #0x7f
+  strx  t0, [channelPointer, #channel_st.delayedBend.note]
+  movs  instruction, #0
+  b     return
+
+setInstrument:
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.state]
+  strx  t0, [channelPointer, #channel_st.basePitch]
+  strx  t0, [channelPointer, #channel_st.targetPitch]
+  strx  t0, [channelPointer, #channel_st.delayedNote.left]
+  strx  t0, [channelPointer, #channel_st.delayedBend.left]
+  // set instrument base pointer
+  ldr   t0, =songBasePointer
+  ldrx  t1, [t0, #song_st.instTableOffset]
+  adds  t1, t0
+  lsls  payload, #2
+  ldr   t1, [t1, payload]
+  adds  t1, t0
+  strx  t1, [channelPointer, #channel_st.instBasePointer]
+  // set oscillator pointer
+  ldrx  t0, [t1, #songInst_st.wave]
+  ldr   t1, =lowpassCount * (1 << maxPhaseBits) * 2
+  muls  t0, t1
+  ldr   t1, =oscillatorTable
+  adds  t0, t1
+  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
+  b     doneEffect
+setInstrument0:
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.instBasePointer]
+  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
+  strx  t0, [channelPointer, #channel_st.state]
+  strx  t0, [channelPointer, #channel_st.basePitch]
+  strx  t0, [channelPointer, #channel_st.targetPitch]
+  strx  t0, [channelPointer, #channel_st.delayedNote.left]
+  strx  t0, [channelPointer, #channel_st.delayedBend.left]
+  b     doneEffect
+setInstrumentPcm1:
+  movs  t0, #1
+  strx  t0, [channelPointer, #channel_st.instBasePointer]
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
+  strx  t0, [channelPointer, #channel_st.state]
+  strx  t0, [channelPointer, #channel_st.basePitch]
+  strx  t0, [channelPointer, #channel_st.targetPitch]
+  strx  t0, [channelPointer, #channel_st.delayedNote.left]
+  strx  t0, [channelPointer, #channel_st.delayedBend.left]
+  b     doneEffect
+setInstrumentPcm2:
+  movs  t0, #2
+  strx  t0, [channelPointer, #channel_st.instBasePointer]
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
+  strx  t0, [channelPointer, #channel_st.state]
+  strx  t0, [channelPointer, #channel_st.basePitch]
+  strx  t0, [channelPointer, #channel_st.targetPitch]
+  strx  t0, [channelPointer, #channel_st.delayedNote.left]
+  strx  t0, [channelPointer, #channel_st.delayedBend.left]
+  b     doneEffect
+setInstrumentPcm3:
+  movs  t0, #3
+  strx  t0, [channelPointer, #channel_st.instBasePointer]
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
+  strx  t0, [channelPointer, #channel_st.state]
+  strx  t0, [channelPointer, #channel_st.basePitch]
+  strx  t0, [channelPointer, #channel_st.targetPitch]
+  strx  t0, [channelPointer, #channel_st.delayedNote.left]
+  strx  t0, [channelPointer, #channel_st.delayedBend.left]
+  b     doneEffect
+
+setTempo:
+  // tempoIndex = payload
+  // tickStart = tempoTable[tempoIndex]
+  // tickLeft = 0
+  ldr   t0, =IW.synth.tempoIndex
+  strx  payload, [t0] (IW.synth.tempoIndex)
+  lsls  payload, #1
+  ldr   t1, =tempoTable
+  ldrh  t1, [t1, payload]
+  ldr   t0, =IW.synth.tickStart
+  strx  t1, [t0] (IW.synth.tickStart)
+  ldr   t0, =IW.synth.tickLeft
+  movs  t1, #0
+  strx  t1, [t0] (IW.synth.tickLeft)
+  b     doneEffect
+
+doneEffect:
+
+  // apply note
+  .regs instruction, channelPointer, note, t0-t1, r5-r11
+  ands  note, instruction, #0x7f
+
+  cmp   note, #0
+  beq   doneNote
+  cmp   note, #2
+  beq   end
+  cmp   note, #1
+  beq   noteOff
+
+  // otherwise, note on
+  // (copied above for delay)
+  ldrx  t0, [channelPointer, #channel_st.delay]
+  cmp   t0, #0
+  bne   delayedNote
+  movs  t0, #2
+  strx  t0, [channelPointer, #channel_st.state]
+  // TODO: maybe some instruments shouldn't reset phase?
+  // ex: saw, tri, sin, pcm => reset   sqX, rnd => no reset
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.phase]
+  strx  t0, [channelPointer, #channel_st.envVolumeIndex]
+  strx  t0, [channelPointer, #channel_st.envPitchIndex]
+  lsls  t0, note, #pitchDivisionBits
+  strx  t0, [channelPointer, #channel_st.basePitch]
+  strx  t0, [channelPointer, #channel_st.targetPitch]
+  b     doneNote
+delayedNote:
+  strx  t0, [channelPointer, #channel_st.delayedNote.left]
+  strx  note, [channelPointer, #channel_st.delayedNote.note]
+  b     doneNote
+
+end:
+  movs  instruction, #1
+  b     return
+
+noteOff:
+  movs  t0, #1
+  strx  t0, [channelPointer, #channel_st.state]
+  b     doneNote
+
+doneNote:
+  movs  instruction, #0
+  .begin return
+    .regs r0-r11
+    pop   {r4}
+    bx    lr
+  .end
+  .pool
+.end

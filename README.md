@@ -2,10 +2,10 @@ gvsong
 ======
 
 Music engine for the Game Boy Advance written in gvasm assembly.  Includes a CLI tool for rendering
-songs at high-resolution.
+songs at high-resolution and generating test GBA ROMs.
 
-CLI Usage
-=========
+Usage
+=====
 
 You'll need to install [deno](https://deno.land) on your operating system.
 
@@ -31,3 +31,22 @@ Run the tool via:
 ```
 gvsong --help
 ```
+
+Rendering a Demo
+================
+
+Try this:
+
+```
+gvsong render demo/song0.sink
+```
+
+This will render the song at high-resolution at `demo/song0.wav`.
+
+Now, build a GBA ROM file:
+
+```
+gvsong gba demo/song0.sink
+```
+
+This will create `demo/song0.gba`, which uses the sound engine to play the same song.
