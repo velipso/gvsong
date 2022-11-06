@@ -51,7 +51,7 @@ gvsong gba demo/song0.sink
 
 This will create `demo/song0.gba`, which uses the sound engine to play the same song.
 
-Lately, you can output the intermediate .gvsong file via:
+Lastly, you can output the intermediate .gvsong file via:
 
 ```
 gvsong make demo/song0.sink
