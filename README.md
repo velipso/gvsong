@@ -15,7 +15,7 @@ Then run:
 # install the latest release of deno
 deno upgrade
 
-# install the latest release of gvasm
+# install the latest release of gvsong
 deno install --allow-read --allow-write -f -r \
   https://raw.githubusercontent.com/velipso/gvsong/main/gvsong.ts
 ```
@@ -50,3 +50,11 @@ gvsong gba demo/song0.sink
 ```
 
 This will create `demo/song0.gba`, which uses the sound engine to play the same song.
+
+Lately, you can output the intermediate .gvsong file via:
+
+```
+gvsong make demo/song0.sink
+```
+
+This will create the binary `song0.gvsong`, which is what is loaded into memory by the GBA player.

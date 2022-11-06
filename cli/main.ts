@@ -15,7 +15,7 @@ function printVersion() {
 by Sean Connelly (@velipso), https://sean.cm
 Project Home: https://github.com/velipso/gvsong
 SPDX-License-Identifier: 0BSD
-Version: 0.1`);
+Version: 1.0.0`);
 }
 
 function printHelp() {

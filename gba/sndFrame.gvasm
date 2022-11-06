@@ -85,8 +85,8 @@ doneTick:
     ldrx  instPointer, [channelPointer, #channel_st.instBasePointer]
     cmp   instPointer, #0 // is instrument 0?
     beq   continue
-    cmp   instPointer, #4
-    blt   renderPcmInst
+    cmp   instPointer, #1
+    beq   renderPcmInst
     ldrx  ip, [instPointer, #songInst_st.volumeEnvOffset]
     adds  ip, instPointer
     ldrx  t0, [channelPointer, #channel_st.envVolumeIndex]
@@ -626,9 +626,9 @@ effectCommandTable:
   .u32  setDelay0
   .u32  setBend0
   .u32  setInstrument0
-  .u32  setInstrumentPcm1
-  .u32  setInstrumentPcm2
-  .u32  setInstrumentPcm3
+  .u32  setInstrumentPcm
+  .u32  doneEffect
+  .u32  doneEffect
 
 setVolume:
   adds  payload, #1
@@ -732,30 +732,8 @@ setInstrument0:
   strx  t0, [channelPointer, #channel_st.delayedNote.left]
   strx  t0, [channelPointer, #channel_st.delayedBend.left]
   b     doneEffect
-setInstrumentPcm1:
+setInstrumentPcm:
   movs  t0, #1
-  strx  t0, [channelPointer, #channel_st.instBasePointer]
-  movs  t0, #0
-  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
-  strx  t0, [channelPointer, #channel_st.state]
-  strx  t0, [channelPointer, #channel_st.basePitch]
-  strx  t0, [channelPointer, #channel_st.targetPitch]
-  strx  t0, [channelPointer, #channel_st.delayedNote.left]
-  strx  t0, [channelPointer, #channel_st.delayedBend.left]
-  b     doneEffect
-setInstrumentPcm2:
-  movs  t0, #2
-  strx  t0, [channelPointer, #channel_st.instBasePointer]
-  movs  t0, #0
-  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
-  strx  t0, [channelPointer, #channel_st.state]
-  strx  t0, [channelPointer, #channel_st.basePitch]
-  strx  t0, [channelPointer, #channel_st.targetPitch]
-  strx  t0, [channelPointer, #channel_st.delayedNote.left]
-  strx  t0, [channelPointer, #channel_st.delayedBend.left]
-  b     doneEffect
-setInstrumentPcm3:
-  movs  t0, #3
   strx  t0, [channelPointer, #channel_st.instBasePointer]
   movs  t0, #0
   strx  t0, [channelPointer, #channel_st.oscillatorPointer]
