@@ -8,10 +8,18 @@
 .stdlib
 .import './memset32.gvasm' { memset32 }
 .import './memcpy32.gvasm' { memcpy32 }
-.import './config.gvasm' { IW }
+.import './config.gvasm' { IW, song_st }
 .import './sndInit.gvasm' { sndInit }
 .import './sndFrame.gvasm' { sndFrame }
 .import './sndLoadSong.gvasm' { sndLoadSong }
+
+.begin INP
+  .def MASK_D             = 0x080
+  .def MASK_U             = 0x040
+  .def MASK_L             = 0x020
+  .def MASK_R             = 0x010
+  .def MASK_S             = 0x008
+.end
 
 // GBA header
 .begin
@@ -90,18 +98,204 @@ iwramEnd:
 
   // setup bg0
   ldr   r0, =REG_BG0CNT
-  ldr   r1, =0b11_0_01100__1_0_00_10_11
+  ldr   r1, =0xc883
   strh  r1, [r0]
+
+  // set palette
+  ldr   r0, =0x05000000
+  movs  r1, #0
+  strh  r1, [r0]
+  adds  r0, #2
+  strh  r1, [r0]
+  adds  r0, #2
+  ldr   r1, =rgb(31, 31, 31)
+  strh  r1, [r0]
+  adds  r0, #2
+  ldr   r1, =rgb(4, 20, 10)
+  strh  r1, [r0]
+
+  // copy over tiles
+  ldr   r0, =0x06000000
+  ldr   r1, =tileData
+  ldr   r2, =32 * 3 * 8 * 8 * 2
+  bl    memcpy32
+
+  // print messages
+  ldr   r0, =0
+  ldr   r1, =5
+  ldr   r2, =songTitle
+  ldr   r3, =0
+  bl    printString
+  ldr   r0, =6
+  ldr   r1, =9
+  ldr   r2, =volumeStr
+  ldr   r3, =96
+  bl    printString
+  ldr   r0, =6
+  ldr   r1, =11
+  ldr   r2, =sequenceStr
+  ldr   r3, =96
+  bl    printString
+  ldr   r0, =3
+  ldr   r1, =16
+  ldr   r2, =madeWith
+  ldr   r3, =96
+  bl    printString
+  ldr   r0, =2
+  ldr   r1, =18
+  ldr   r2, =url
+  ldr   r3, =96
+  bl    printString
 
   // enable bg0
   ldr   r0, =REG_DISPCNT
   ldr   r1, =0x0100
   strh  r1, [r0]
 
+  movs  r4, #0
+  movs  r5, #0
+
   .begin nextFrame
     swi   5
+
+    // print volume
+    ldr   r0, =IW.volumeStr
+    movs  r1, #60
+    strb  r1, [r0, #0]
+    movs  r1, #32
+    strb  r1, [r0, #1]
+    strb  r1, [r0, #4]
+    movs  r1, #62
+    strb  r1, [r0, #5]
+    movs  r1, #0
+    strb  r1, [r0, #6]
+    strb  r1, [r0, #7]
+    adds  r0, #2
+    ldr   r1, =IW.masterVolume
+    ldrx  r1, [r1] (IW.masterVolume)
+    bl    printByte
+
+    ldr   r0, =16
+    ldr   r1, =9
+    ldr   r2, =IW.volumeStr
+    movs  r3, #0
+    cmp   r4, #0
+    beq   +
+    ldr   r3, =96
++   bl    printString
+
+    // print sequence
+    ldr   r0, =IW.sequenceStr
+    movs  r1, #60
+    strb  r1, [r0, #0]
+    movs  r1, #32
+    strb  r1, [r0, #1]
+    strb  r1, [r0, #4]
+    movs  r1, #62
+    strb  r1, [r0, #5]
+    movs  r1, #0
+    strb  r1, [r0, #6]
+    strb  r1, [r0, #7]
+    adds  r0, #2
+    ldr   r1, =IW.synth.sequence
+    ldrx  r1, [r1] (IW.synth.sequence)
+    bl    printByte
+
+    ldr   r0, =16
+    ldr   r1, =11
+    ldr   r2, =IW.sequenceStr
+    movs  r3, #0
+    cmp   r4, #1
+    beq   +
+    ldr   r3, =96
++   bl    printString
+
+    // advance sound
     ldr   r0, =sndFrame
     bl    bx_r0
+
+    // read input
+    ldr   r0, =REG_KEYINPUT
+    ldrh  r0, [r0]
+    ldr   r1, =0x3ff
+    eors  r0, r1
+    // r0 = this input
+    // r5 = last input
+    // r0 ^ r5 = buttons that have toggled
+    // r0 & (r0 ^ r5) = buttons that have been hit
+    movs  r1, r5
+    eors  r1, r0
+    ands  r1, r0
+    movs  r5, r0
+
+    movs  r0, #INP.MASK_U
+    ands  r0, r1
+    bne   hitUp
+    movs  r0, #INP.MASK_D
+    ands  r0, r1
+    bne   hitDown
+    movs  r0, #INP.MASK_L
+    ands  r0, r1
+    bne   hitLeft
+    movs  r0, #INP.MASK_R
+    ands  r0, r1
+    bne   hitRight
+    movs  r0, #INP.MASK_S
+    ands  r0, r1
+    bne   hitStart
+    b     nextFrame
+hitUp:
+    movs  r4, #0
+    b     nextFrame
+hitDown:
+    movs  r4, #1
+    b     nextFrame
+hitLeft:
+    cmp   r4, #0
+    beq   volumeDown
+    // sequence down
+    ldr   r0, =IW.synth.sequence
+    ldrx  r0, [r0] (IW.synth.sequence)
+    cmp   r0, #0
+    ble   nextFrame
+    subs  r0, #1
+    bl    sndLoadSong
+    b     nextFrame
+volumeDown:
+    ldr   r0, =IW.masterVolume
+    ldrx  r1, [r0] (IW.masterVolume)
+    cmp   r1, #0
+    ble   nextFrame
+    subs  r1, #1
+    strx  r1, [r0] (IW.masterVolume)
+    b     nextFrame
+hitRight:
+    cmp   r4, #0
+    beq   volumeUp
+    // sequence up
+    ldr   r0, =IW.synth.sequence
+    ldrx  r0, [r0] (IW.synth.sequence)
+    ldr   r1, =songBasePointer
+    ldrx  r1, [r1, #song_st.seqsLength]
+    subs  r1, #1
+    cmp   r0, r1
+    bge   nextFrame
+    adds  r0, #1
+    bl    sndLoadSong
+    b     nextFrame
+volumeUp:
+    ldr   r0, =IW.masterVolume
+    ldrx  r1, [r0] (IW.masterVolume)
+    cmp   r1, #16
+    bge   nextFrame
+    adds  r1, #1
+    strx  r1, [r0] (IW.masterVolume)
+    b     nextFrame
+hitStart:
+    // restart sequence
+    ldr   r0, =IW.synth.sequence
+    ldrx  r0, [r0] (IW.synth.sequence)
+    bl    sndLoadSong
     b     nextFrame
   .end
   .pool
@@ -112,6 +306,88 @@ iwramEnd:
   bx    r0
 .end
 
+.begin printByte //(output, byte)
+  .thumb
+  lsls  r2, r1, #24
+  lsrs  r2, #28
+  cmp   r2, #10
+  blt   +
+  adds  r2, #55
+  b     ++
++ adds  r2, #48
+++
+  strb  r2, [r0]
+  adds  r0, #1
+  lsls  r2, r1, #28
+  lsrs  r2, #28
+  cmp   r2, #10
+  blt   +
+  adds  r2, #55
+  b     ++
++ adds  r2, #48
+++
+  strb  r2, [r0]
+  bx    lr
+.end
+
+.begin printString //(x, y, ptr, color)
+  .thumb
+  lsls  r0, #1
+  lsls  r1, #6
+  adds  r0, r1
+  movs  r1, r3
+  ldr   r3, =0x06004000
+  adds  r3, r0
+nextChar:
+  ldrb  r0, [r2]
+  cmp   r0, #0
+  beq   return
+  subs  r0, #32
+  adds  r0, r1
+  strh  r0, [r3]
+  adds  r2, #1
+  adds  r3, #2
+  b     nextChar
+return:
+  bx    lr
+  .pool
+.end
+
+volumeStr:
+.str "  volume: <    >\0"
+sequenceStr:
+.str "sequence: <    >\0"
+madeWith:
+.str "made with gvsong v"
+.script
+  var version = pickle.val embed '../version.json'
+  u8 str.list list.join version, '.'
+.end
+.u8  0
+url:
+.str "github.com/velipso/gvsong\0"
+
+.align 4
+tileData:
+.script
+  var img = image.load embed './font.png'
+  var d1 = {}
+  var d2 = {}
+  for var ty: range 3
+    for var tx: range 32
+      for var y: range 8
+        for var x: range 8
+          var c = image.rgb img, tx * 8 + x, ty * 8 + y
+          list.push d1, pick c == 0, 0, 2
+          list.push d2, pick c == 0, 0, 3
+        end
+      end
+    end
+  end
+  u8 d1
+  u8 d2
+.end
+
 .align 4
 .include './memcpy32.gvasm'
 .include './memset32.gvasm'
@@ -119,5 +395,7 @@ iwramEnd:
 .include './sndLoadSong.gvasm'
 
 .align 1024
-songBasePointer:
-// song will be concatenated by gvsong at end of ROM
+songTitle:
+// song title will be concatenated first, with 32 chars
+.def songBasePointer = songTitle + 32
+// then the song itself

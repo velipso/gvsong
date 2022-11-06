@@ -9,13 +9,14 @@ import { IMakeArgs, make } from './make.ts';
 import { IRenderArgs, render } from './render.ts';
 import { gba, IGbaArgs } from './gba.ts';
 import { argParse, Path } from './deps.ts';
+import version from '../version.json' assert { type: 'json' };
 
 function printVersion() {
   console.log(`gvsong - Builds and renders songs designed for Game Boy Advance
 by Sean Connelly (@velipso), https://sean.cm
 Project Home: https://github.com/velipso/gvsong
 SPDX-License-Identifier: 0BSD
-Version: 1.0.0`);
+Version: ${version[0]}.${version[1]}.${version[2]}`);
 }
 
 function printHelp() {
