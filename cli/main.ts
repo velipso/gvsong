@@ -11,6 +11,8 @@ import { gba, IGbaArgs } from './gba.ts';
 import { argParse, Path } from './deps.ts';
 import version from '../version.json' assert { type: 'json' };
 
+const path = new Path();
+
 function printVersion() {
   console.log(`gvsong - Builds and renders songs designed for Game Boy Advance
 by Sean Connelly (@velipso), https://sean.cm
@@ -72,7 +74,7 @@ function parseMakeArgs(args: string[]): number | IMakeArgs {
   const output = a.output;
   return {
     input,
-    output: output ?? (new Path()).replaceExt(input, '.gvsong'),
+    output: output ?? path.replaceExt(input, '.gvsong'),
   };
 }
 
@@ -129,25 +131,31 @@ function parseRenderArgs(args: string[]): number | IRenderArgs {
   }
   return {
     input,
-    output: output ?? (new Path()).replaceExt(input, '.wav'),
+    output: output ?? path.replaceExt(input, '.wav'),
     loop,
     sequence,
   };
 }
 
 function printGbaHelp() {
-  console.log(`gvsong gba <input> [-o <output>]
+  console.log(`gvsong gba <input> [-o <output>] [-m <message>]
 
 <input>        The input .sink or .gvsong file
--o <output>    The output file (default: input with .gba extension)`);
+-o <output>    The output file (default: input with .gba extension)
+-m <message>   Messages to embed in the ROM (default: input filename)
+               You can specify up to three messages:
+                 -m 'Line 1' -m 'Line 2' -m 'Line 3'`);
 }
 
 function parseGbaArgs(args: string[]): number | IGbaArgs {
   let badArgs = false;
-  const a = argParse(args, {
+  // why does typescript hate the flags library?
+  // deno-lint-ignore no-explicit-any
+  const a: any = argParse(args, {
     string: ['output'],
     boolean: ['help'],
-    alias: { h: 'help', o: 'output' },
+    collect: ['message'],
+    alias: { h: 'help', o: 'output', m: 'message' },
     unknown: (_arg: string, key?: string) => {
       if (key) {
         console.error(`Unknown argument: -${key}`);
@@ -174,9 +182,13 @@ function parseGbaArgs(args: string[]): number | IGbaArgs {
   }
   const input = a._[0] as string;
   const output = a.output;
+  const message = a.message
+    ? a.message
+    : ['', path.basename(input).replace(/\.(sink|gvsong)$/i, ''), ''];
   return {
     input,
-    output: output ?? (new Path()).replaceExt(input, '.gba'),
+    output: output ?? path.replaceExt(input, '.gba'),
+    message,
   };
 }
 

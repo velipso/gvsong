@@ -122,8 +122,18 @@ iwramEnd:
 
   // print messages
   ldr   r0, =0
-  ldr   r1, =5
-  ldr   r2, =songTitle
+  ldr   r1, =2
+  ldr   r2, =songMessages
+  ldr   r3, =0
+  bl    printString
+  ldr   r0, =0
+  ldr   r1, =4
+  ldr   r2, =songMessages+32
+  ldr   r3, =0
+  bl    printString
+  ldr   r0, =0
+  ldr   r1, =6
+  ldr   r2, =songMessages+64
   ldr   r3, =0
   bl    printString
   ldr   r0, =6
@@ -395,7 +405,7 @@ tileData:
 .include './sndLoadSong.gvasm'
 
 .align 1024
-songTitle:
-// song title will be concatenated first, with 32 chars
-.def songBasePointer = songTitle + 32
+songMessages:
+// three song messages will be concatenated first, with 32 chars each
+.def songBasePointer = songMessages + 32*3
 // then the song itself
