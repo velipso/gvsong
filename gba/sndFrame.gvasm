@@ -587,10 +587,11 @@ nextSeq:
 
 .begin sndTickChannel //(instruction, channelPointer) => end?
   .arm
-  push  {r4}
+  push  {r4-r5}
 
   // apply effect
-  .regs instruction, channelPointer, payload, t0-t1, r5-r11
+  .regs instruction, channelPointer, payload, endFlag, t0-t1, r6-r11
+  movs  endFlag, #0
   lsrs  t0, instruction, #7
   ands  payload, t0, #0x3f
   lsrs  t0, #6
@@ -621,7 +622,7 @@ effectCommandTable:
   .u32  setBend0
   .u32  setInstrument0
   .u32  setInstrumentPcm
-  .u32  doneEffect
+  .u32  flagEnd1
   .u32  doneEffect
 
 setVolume:
@@ -738,6 +739,10 @@ setInstrumentPcm:
   strx  t0, [channelPointer, #channel_st.delayedBend.left]
   b     doneEffect
 
+flagEnd1:
+  movs  endFlag, #1
+  b     doneEffect
+
 setTempo:
   // tempoIndex = payload
   // tickStart = tempoTable[tempoIndex]
@@ -757,13 +762,13 @@ setTempo:
 doneEffect:
 
   // apply note
-  .regs instruction, channelPointer, note, t0-t1, r5-r11
+  .regs instruction, channelPointer, note, endFlag, t0-t1, r6-r11
   ands  note, instruction, #0x7f
 
   cmp   note, #0
   beq   doneNote
   cmp   note, #2
-  beq   end
+  beq   flagEnd2
   cmp   note, #1
   beq   noteOff
 
@@ -789,9 +794,9 @@ delayedNote:
   strx  note, [channelPointer, #channel_st.delayedNote.note]
   b     doneNote
 
-end:
-  movs  instruction, #1
-  b     return
+flagEnd2:
+  movs  endFlag, #1
+  b     doneNote
 
 noteOff:
   movs  t0, #1
@@ -799,10 +804,10 @@ noteOff:
   b     doneNote
 
 doneNote:
-  movs  instruction, #0
+  movs  instruction, endFlag
   .begin return
     .regs r0-r11
-    pop   {r4}
+    pop   {r4-r5}
     bx    lr
   .end
   .pool

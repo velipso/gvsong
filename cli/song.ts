@@ -101,7 +101,7 @@ function parseEnvelope(
 }
 
 function isEnd(cmd: number) {
-  return (cmd & 0x7f) === 2;
+  return (cmd & 0x7f) === 2 || (cmd >> 7) === 6;
 }
 
 const tempoTable: { tempo: number; start: number }[] = [];
@@ -559,6 +559,7 @@ export class Song {
           //     - 000011 bend immediately (B00)
           //     - 000100 set instrument silence (I00)
           //     - 000101 set instrument pcm (PCM)
+          //     - 000110 end pattern (END)
           // 001 set volume (V01-V64)
           // 010 set note delay (D01-D64, frames)
           // 011 start bend (B01-B64, 16th notes)
@@ -579,6 +580,9 @@ export class Song {
             effect = 4;
           } else if (inst[1] == 'PCM') {
             effect = 5;
+          } else if (inst[1] == 'END') {
+            effect = 6;
+            gotEnd = true;
           } else if (!isNaN(parseInt(inst[1], 10))) {
             const tempo = parseInt(inst[1], 10);
             if (isNaN(tempo) || tempo < 45 || tempo > 202) {
@@ -794,6 +798,9 @@ export class Song {
                   chan.delayedNote.left = 0;
                   chan.delayedBend.left = 0;
                   chan.instIndex = -2;
+                  break;
+                case 6:
+                  endFlag = true;
                   break;
                 default:
                   // malformed data
