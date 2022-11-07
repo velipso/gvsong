@@ -51,6 +51,7 @@
     ldr   tickLeftPtr, =IW.synth.tickLeft
     ldrx  tickLeft, [tickLeftPtr] (IW.synth.tickLeft)
     subs  tickLeft, #256
+    strx  tickLeft, [tickLeftPtr] (IW.synth.tickLeft)
     bgt   doneTick
 runTick:
     bl    sndTick
@@ -59,10 +60,10 @@ runTick:
     muls  t0, tickStart
     ldrx  tickLeft, [tickLeftPtr] (IW.synth.tickLeft)
     adds  tickLeft, t0
+    strx  tickLeft, [tickLeftPtr] (IW.synth.tickLeft)
     cmp   tickLeft, #0
     ble   runTick
 doneTick:
-    strx  tickLeft, [tickLeftPtr] (IW.synth.tickLeft)
   .end
 
   .regs t0, channelPointer, channelLeft, sampleLeft, output, \
@@ -108,7 +109,7 @@ doneTick:
     ldrh  dphase, [dphase, ip]
 
     ldrx  t0, [instPointer, #songInst_st.wave]
-    cmp   t0, #oscillatorCount + 1
+    cmp   t0, #oscillatorCount
     beq   renderRndInst
     // otherwise, oscillator
 
@@ -189,8 +190,7 @@ doneTick:
       str   channelLeft, [sp, #S.channelLeft]
       ldr   channelLeft, [sp, #S.didClear]
 
-      lsls  dphase, #3
-      ldr   phaseMask, =(maxRndSample - 1) << 17
+      ldr   phaseMask, =(maxRndSample - 1) << 12
       .begin nextSample
         cmp   channelLeft, #0
         moveq sample0, #0
@@ -202,7 +202,7 @@ doneTick:
         .begin renderRndChannelTwice
           // render rnd instrument
           ands  t0, phase, phaseMask
-          lsrs  t0, #16
+          lsrs  t0, #11
           ldrsh t0, [wave, t0]
           adds  phase, dphase
 
@@ -212,7 +212,7 @@ doneTick:
 
           // and again
           ands  t0, phase, phaseMask
-          lsrs  t0, #16
+          lsrs  t0, #11
           ldrsh t0, [wave, t0]
           adds  phase, dphase
 
@@ -229,12 +229,6 @@ doneTick:
         bne   nextSample
       .end
 
-      // if maxRndSample is less than 1<<15, then the top bits will
-      // need to be filtered out...
-      .if log2assert(maxRndSample) < 15
-        lsls  phase, #15 - log2assert(maxRndSample)
-        lsrs  phase, #15 - log2assert(maxRndSample)
-      .end
       strx  phase, [channelPointer, #channel_st.phase]
 
       // uncache channelLeft and load didClear

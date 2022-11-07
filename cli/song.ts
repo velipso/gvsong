@@ -607,7 +607,7 @@ export class Song {
             } else if (cmd == 'B') {
               effect = 0x0c0 | payload;
             } else if (cmd == 'I') {
-              if (payload + 1 >= this.instruments.length) {
+              if (payload >= this.instruments.length) {
                 throw new Error(`Instrument ${payload + 1} not defined: ${parts[ch]}`);
               }
               effect = 0x100 | payload;
@@ -884,9 +884,9 @@ export class Song {
           if (inst.wave === 11) {
             // random noise
             for (let i = 0; i < 608; i++) {
-              const w = tables[2048 * (11 * 11) + Math.floor(chan.phase)];
+              const w = tables[2048 * (11 * 11) + (chan.phase >> 7)];
               output[i] += finalVolume * w;
-              chan.phase = (chan.phase + dphase) % (1 << 15);
+              chan.phase = (chan.phase + dphase) % (1 << 22);
             }
           } else {
             // oscillator
