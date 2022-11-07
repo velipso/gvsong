@@ -38,7 +38,8 @@ export async function gba({ input, output, message }: IGbaArgs): Promise<number>
     const songBin = song.toArray();
 
     const romFile = new URL('../gba/main.bin', import.meta.url).pathname;
-    const romBin = await fs.readBinaryFile(romFile);
+    console.log(romFile);
+    const romBin = await Deno.readFile(romFile);
 
     const out = await Deno.open(output, { write: true, create: true, truncate: true });
     await out.write(romBin);
