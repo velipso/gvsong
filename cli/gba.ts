@@ -5,8 +5,11 @@
 // SPDX-License-Identifier: 0BSD
 //
 
+import rom from './rom.json' assert { type: 'json' };
 import { Song } from './song.ts';
 import { defaultFileSystemContext, makeFromFile } from './make.ts';
+
+const romBin = new Uint8Array(rom);
 
 export interface IGbaArgs {
   input: string;
@@ -36,10 +39,6 @@ export async function gba({ input, output, message }: IGbaArgs): Promise<number>
       throw new Error(`Bad file format: ${input}`);
     }
     const songBin = song.toArray();
-
-    const romFile = new URL('../gba/main.bin', import.meta.url).pathname;
-    console.log(romFile);
-    const romBin = await Deno.readFile(romFile);
 
     const out = await Deno.open(output, { write: true, create: true, truncate: true });
     await out.write(romBin);

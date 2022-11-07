@@ -1,16 +1,12 @@
 Building Instructions
 =====================
 
-The empty ROM is checked into the repo as `main.bin`.  In order to create a demo ROM, the filename
-and `song.gvsong` is simply concatenated at the end of `main.bin` to produce `song.gba`.
+The empty ROM is checked into the repo as `cli/rom.json`.  In order to create a demo ROM, the
+filename and `song.gvsong` is simply concatenated at the end of the data to produce `song.gba`.
 
-You can build `main.bin` by using [gvasm](https://github.com/velipso/gvasm).
+You can build `rom.json` by first installing [gvasm](https://github.com/velipso/gvasm).
 
 NOTE: Make sure you are using the `v2` branch of gvasm.  At the time of writing, this is still in
 beta, so you will need to [switch to the branch manually](https://github.com/velipso/gvasm/tree/v2).
 
-Now you can make `main.bin` via:
-
-```
-gvasm make gba/main.gvasm -o gba/main.bin
-```
+Now you can make `rom.json` via `./gen-rom.ts` in the root of the repo.
