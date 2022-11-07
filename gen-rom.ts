@@ -13,7 +13,7 @@
 async function checkGvasm(cmd: string) {
   try {
     const gv = await Deno.run({ cmd: [cmd, '--version'], stdout: 'piped', stderr: 'piped' });
-    if (!(await gv.status()).success){
+    if (!(await gv.status()).success) {
       return false;
     }
     const output = new TextDecoder().decode(await gv.output()).match(/Version: (\d+)\.\d+\.\d+\b/);
@@ -24,10 +24,10 @@ async function checkGvasm(cmd: string) {
 }
 
 const gvasm = (await checkGvasm('gvasm'))
-? 'gvasm'
-: (await checkGvasm('gvasm2'))
-? 'gvasm2'
-: false;
+  ? 'gvasm'
+  : (await checkGvasm('gvasm2'))
+  ? 'gvasm2'
+  : false;
 
 if (!gvasm) {
   console.error(`Missing gvasm v2 -- please install by visiting:
