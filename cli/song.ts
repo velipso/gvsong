@@ -63,6 +63,8 @@ interface IPlayer {
   tempoIndex: number;
   tickStart: number;
   tickLeft: number;
+  tick16thLeft: number;
+  total16th: number;
   seqIndex: number;
   patIndex: number;
   rowIndex: number;
@@ -735,6 +737,8 @@ export class Song {
       tempoIndex: 0,
       tickStart: tempoTable[0].start,
       tickLeft: 0,
+      tick16thLeft: 0,
+      total16th: 0,
       seqIndex: 0,
       patIndex: this.sequences[sequence].patterns[0],
       rowIndex: 0,
@@ -783,6 +787,7 @@ export class Song {
     while (true) {
       // advance tick counter
       player.tickLeft -= 256;
+      player.tick16thLeft -= 256;
       while (player.tickLeft <= 0 && player.loopsLeft >= 0) {
         // perform tick
         let endFlag = false;
@@ -862,6 +867,7 @@ export class Song {
               player.tempoIndex = payload;
               player.tickStart = tempoTable[player.tempoIndex].start;
               player.tickLeft = 0;
+              player.tick16thLeft = 0;
               break;
             default:
               // malformed data
@@ -903,6 +909,10 @@ export class Song {
           player.rowIndex = 0;
         }
         player.tickLeft += wait * player.tickStart;
+      }
+      if (player.tick16thLeft <= 0) {
+        player.tick16thLeft += player.tickStart;
+        player.total16th++;
       }
 
       // render frame
@@ -1025,7 +1035,12 @@ export class Song {
     return out;
   }
 
-  toImage(sequence: number, drawChannels: number[], drawBends: boolean): Uint8Array {
+  toImage(
+    sequence: number,
+    drawChannels: number[],
+    drawBends: boolean,
+    drawVolume: boolean,
+  ): Uint8Array {
     const channelIndexes = drawChannels.filter((ch) =>
       Math.floor(ch) === ch && ch >= 0 && ch < this.channelCount
     );
@@ -1035,9 +1050,16 @@ export class Song {
     );
     const hue = (n: number) => Math.floor(((n * 1.618) % 1) * 360);
     const patternPos: ({ pi: number; x: number; width: number })[] = [];
-    const pitches: ({ x: number; inst: number; pitch: number; noteOn: boolean })[] = [];
+    const pitches: ({ x: number; inst: number; pitch: number; volume: number; noteOn: boolean })[] =
+      [];
+    const grid16th: number[] = [];
     let x = 0;
+    let last16th = -1;
     this.render(1, sequence, channels, () => {}, (player) => {
+      if (player.total16th !== last16th) {
+        last16th = player.total16th;
+        grid16th.push(x);
+      }
       if (player.loopsLeft < 0) {
         return;
       }
@@ -1060,13 +1082,25 @@ export class Song {
           noteOn ||= s === 'on';
           chanState[ch] = s;
         }
-        if (chanState[ch] === 'on') {
-          const inst = this.instruments[chan.instIndex];
-          const finalPitch = chan.basePitch + inst.pitch.env[chan.envPitchIndex];
+        if (chanState[ch] !== 'off' && chan.instIndex !== -1) {
+          let pitch = chan.noteOnPitch;
+          let volume = 16;
+          if (chan.instIndex === -2) {
+            // TODO: PCM
+          } else {
+            const inst = this.instruments[chan.instIndex];
+            if (drawBends) {
+              pitch = chan.basePitch + inst.pitch.env[chan.envPitchIndex];
+            }
+            if (drawVolume) {
+              volume = inst.volume.env[chan.envVolumeIndex];
+            }
+          }
           pitches.push({
             x,
             inst: chan.instIndex,
-            pitch: drawBends ? finalPitch : chan.noteOnPitch,
+            pitch,
+            volume,
             noteOn,
           });
         }
@@ -1074,17 +1108,49 @@ export class Song {
 
       x++;
     });
-    const cnv = canvas.createCanvas(x, 120 * 16);
+    const cnv = canvas.createCanvas(x, 120 * 17 + 1);
     const ctx = cnv.getContext('2d');
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, cnv.width, cnv.height);
     ctx.lineWidth = 1;
     ctx.lineCap = 'butt';
-    for (const { x, inst, pitch, noteOn } of pitches) {
-      const y = 120 * 16 - pitch - 16;
+    for (let i = 0; i < grid16th.length; i += 2) {
+      const x = grid16th[i];
       ctx.beginPath();
-      ctx.moveTo(x + 0.5, y);
-      ctx.lineTo(x + 0.5, y + 16);
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, cnv.height);
+      ctx.strokeStyle = [
+        '#555',
+        '#111',
+        '#111',
+        '#111',
+        '#222',
+        '#111',
+        '#111',
+        '#111',
+        '#333',
+        '#111',
+        '#111',
+        '#111',
+        '#222',
+        '#111',
+        '#111',
+        '#111',
+      ][i % 16];
+      ctx.stroke();
+    }
+    for (let p = 0; p <= 120; p++) {
+      ctx.beginPath();
+      ctx.moveTo(0, p * 17 + 0.5);
+      ctx.lineTo(cnv.width, p * 17 + 0.5);
+      ctx.strokeStyle = (p % 12) === 0 ? '#555' : '#333';
+      ctx.stroke();
+    }
+    for (const { x, inst, pitch, volume, noteOn } of pitches) {
+      const y = 120 * 17 - Math.round(pitch * 17 / 16) - 8;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, y - volume / 2);
+      ctx.lineTo(x + 0.5, y + volume / 2);
       ctx.strokeStyle = `hsl(${hue(inst)}, 100%, ${noteOn ? 75 : 50}%)`;
       ctx.stroke();
     }

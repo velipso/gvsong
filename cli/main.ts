@@ -195,21 +195,22 @@ function parseGbaArgs(args: string[]): number | IGbaArgs {
 }
 
 function printImageHelp() {
-  console.log(`gvsong image <input> [-o <output>] [-s <sequence>] [-c <channels>] [-b]
+  console.log(`gvsong image <input> [-o <output>] [-s <sequence>] [-c <channels>] [-b] [-v]
 
 <input>        The input .sink or .gvsong file
 -o <output>    The output file (default: input with .png extension)
 -s <sequence>  The sequence to draw (default: 0)
 -c <channels>  The channels to draw (comma separated, ex: 0,1,2 -- default: all)
--b             Show pitch bends (default: false)`);
+-b             Show pitch bends (default: false)
+-v             Show volume envelopes (default: false)`);
 }
 
 function parseImageArgs(args: string[]): number | IImageArgs {
   let badArgs = false;
   const a = argParse(args, {
     string: ['output', 'sequence', 'channels'],
-    boolean: ['help', 'bend'],
-    alias: { h: 'help', o: 'output', s: 'sequence', c: 'channels', b: 'bend' },
+    boolean: ['help', 'bend', 'volume'],
+    alias: { h: 'help', o: 'output', s: 'sequence', c: 'channels', b: 'bend', v: 'volume' },
     unknown: (_arg: string, key?: string) => {
       if (key) {
         console.error(`Unknown argument: -${key}`);
@@ -249,12 +250,14 @@ function parseImageArgs(args: string[]): number | IImageArgs {
     return 1;
   }
   const bend = !!a.bend;
+  const volume = !!a.volume;
   return {
     input,
     output: output ?? path.replaceExt(input, '.png'),
     channels,
     sequence,
     bend,
+    volume,
   };
 }
 

@@ -13,15 +13,16 @@ export interface IImageArgs {
   sequence: number;
   channels: number[];
   bend: boolean;
+  volume: boolean;
 }
 
 export async function image(
-  { input, output, sequence, channels, bend }: IImageArgs,
+  { input, output, sequence, channels, bend, volume }: IImageArgs,
 ): Promise<number> {
   const song = await makeOrReadFile(input);
   if (typeof song === 'string') {
     throw new Error(song);
   }
-  await Deno.writeFile(output, song.toImage(sequence, channels, bend));
+  await Deno.writeFile(output, song.toImage(sequence, channels, bend, volume));
   return 0;
 }
