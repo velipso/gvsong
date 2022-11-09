@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: 0BSD
 //
 
+export * as canvas from 'https://raw.githubusercontent.com/DjDeveloperr/deno-canvas/d55d38171d3996e22f23a2fdfebcccbdcaa5c702/mod.ts';
 import * as path from 'https://deno.land/std@0.162.0/path/mod.ts';
 export { parse as argParse } from 'https://deno.land/std@0.162.0/flags/mod.ts';
 export { exists as fileExists } from 'https://deno.land/std@0.162.0/fs/exists.ts';

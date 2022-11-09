@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: 0BSD
 //
 
+import { canvas } from './deps.ts';
 import tables from './tables.json' assert { type: 'json' };
 
 const TOTAL_SAMPLES = 5;
@@ -35,6 +36,7 @@ interface ISequence {
 
 interface IChannel {
   state: 'off' | 'rel' | 'on';
+  log: ('on' | 'rel' | 'off')[];
   delay: number;
   delayedNote: {
     left: number;
@@ -48,12 +50,24 @@ interface IChannel {
   chanVolume: number;
   envVolumeIndex: number;
   basePitch: number;
+  noteOnPitch: number;
   targetPitch: number;
   bendCounter: number;
   bendCounterMax: number;
   envPitchIndex: number;
   phase: number;
   instIndex: number;
+}
+
+interface IPlayer {
+  tempoIndex: number;
+  tickStart: number;
+  tickLeft: number;
+  seqIndex: number;
+  patIndex: number;
+  rowIndex: number;
+  loopsLeft: number;
+  endOfSongFade: number;
 }
 
 function parseEnvelope(
@@ -674,25 +688,12 @@ export class Song {
     return this;
   }
 
-  render(loop: number, sequence: number): number[] {
-    if (sequence < 0 || sequence >= this.sequences.length) {
-      throw new Error(`Invalid sequence: ${sequence}`);
-    }
-
-    // initialize
-    const out: number[] = [];
-    let tempoIndex = 0;
-    let tickStart = tempoTable[0].start;
-    let tickLeft = 0;
-    let seqIndex = 0;
-    let patIndex = this.sequences[sequence].patterns[0];
-    let rowIndex = 0;
-    let loopsLeft = loop - 1;
-    let endOfSongFade = 1;
+  private createChannels(): IChannel[] {
     const channels: IChannel[] = [];
     for (let i = 0; i < this.channelCount; i++) {
       channels.push({
         state: 'off',
+        log: [],
         delay: 0,
         delayedNote: {
           left: 0,
@@ -706,6 +707,7 @@ export class Song {
         chanVolume: 0.5,
         envVolumeIndex: 0,
         basePitch: 0,
+        noteOnPitch: 0,
         targetPitch: 0,
         bendCounter: 0,
         bendCounterMax: 0,
@@ -714,24 +716,49 @@ export class Song {
         instIndex: -1,
       });
     }
+    return channels;
+  }
 
-    const noteOn = (ch: number, note: number, immediately: boolean) => {
-      const chan = channels[ch];
+  private render(
+    loop: number,
+    sequence: number,
+    channels: IChannel[],
+    onFrame: (player: IPlayer) => void,
+    onFrameEnd: (player: IPlayer) => void,
+  ) {
+    if (sequence < 0 || sequence >= this.sequences.length) {
+      throw new Error(`Invalid sequence: ${sequence}`);
+    }
+
+    // initialize
+    const player: IPlayer = {
+      tempoIndex: 0,
+      tickStart: tempoTable[0].start,
+      tickLeft: 0,
+      seqIndex: 0,
+      patIndex: this.sequences[sequence].patterns[0],
+      rowIndex: 0,
+      loopsLeft: loop - 1,
+      endOfSongFade: 1,
+    };
+
+    const noteOn = (chan: IChannel, note: number, immediately: boolean) => {
       if (!immediately && chan.delay > 0) {
         chan.delayedNote.left = chan.delay;
         chan.delayedNote.note = note;
       } else {
+        chan.log.push('on');
         chan.state = 'on';
         chan.phase = 0;
         chan.envVolumeIndex = 0;
         chan.envPitchIndex = 0;
         chan.basePitch = note << 4;
+        chan.noteOnPitch = note << 4;
         chan.targetPitch = note << 4;
       }
     };
 
-    const setBend = (ch: number, duration: number, note: number, immediately: boolean) => {
-      const chan = channels[ch];
+    const setBend = (chan: IChannel, duration: number, note: number, immediately: boolean) => {
       if (!immediately && chan.delay > 0) {
         chan.delayedBend.left = chan.delay;
         chan.delayedBend.duration = duration;
@@ -746,7 +773,7 @@ export class Song {
             chan.targetPitch = chan.basePitch;
           } else {
             chan.bendCounter = 0;
-            chan.bendCounterMax = duration * bendTable[tempoIndex * 128 + dpitchAbs - 1];
+            chan.bendCounterMax = duration * bendTable[player.tempoIndex * 128 + dpitchAbs - 1];
           }
         }
       }
@@ -755,13 +782,13 @@ export class Song {
     // render song
     while (true) {
       // advance tick counter
-      tickLeft -= 256;
-      while (tickLeft <= 0 && loopsLeft >= 0) {
+      player.tickLeft -= 256;
+      while (player.tickLeft <= 0 && player.loopsLeft >= 0) {
         // perform tick
         let endFlag = false;
         for (let ch = 0; ch < this.channelCount; ch++) {
           const chan = channels[ch];
-          const instruction = this.patterns[patIndex][rowIndex].commands[ch];
+          const instruction = this.patterns[player.patIndex][player.rowIndex].commands[ch];
 
           // apply effect
           const effect = (instruction >> 13);
@@ -780,20 +807,24 @@ export class Song {
                   chan.delay = 0;
                   break;
                 case 3: // set bend 0
-                  setBend(ch, 0, note, false);
+                  setBend(chan, 0, note, false);
                   didBend = true;
                   break;
                 case 4: // set instrument 0
+                  chan.log.push('off');
                   chan.state = 'off';
                   chan.basePitch = 0;
+                  chan.noteOnPitch = 0;
                   chan.targetPitch = 0;
                   chan.delayedNote.left = 0;
                   chan.delayedBend.left = 0;
                   chan.instIndex = -1;
                   break;
                 case 5: // set pcm instrument
+                  chan.log.push('off');
                   chan.state = 'off';
                   chan.basePitch = 0;
+                  chan.noteOnPitch = 0;
                   chan.targetPitch = 0;
                   chan.delayedNote.left = 0;
                   chan.delayedBend.left = 0;
@@ -814,66 +845,139 @@ export class Song {
               chan.delay = payload + 1;
               break;
             case 3: // start bend
-              setBend(ch, payload + 1, note, false);
+              setBend(chan, payload + 1, note, false);
               didBend = true;
               break;
             case 4: // set instrument
+              chan.log.push('off');
               chan.state = 'off';
               chan.basePitch = 0;
+              chan.noteOnPitch = 0;
               chan.targetPitch = 0;
               chan.delayedNote.left = 0;
               chan.delayedBend.left = 0;
               chan.instIndex = payload;
               break;
             case 5: // set tempo
-              tempoIndex = payload;
-              tickStart = tempoTable[tempoIndex].start;
-              tickLeft = 0;
+              player.tempoIndex = payload;
+              player.tickStart = tempoTable[player.tempoIndex].start;
+              player.tickLeft = 0;
               break;
             default:
               // malformed data
               break;
           }
 
-          // skip note if bending
-          if (didBend) {
-            continue;
-          }
-
-          // apply note
-          if (note === 0) {
-            continue;
-          } else if (note === 1) {
-            chan.state = 'rel';
-          } else if (note === 2) {
-            endFlag = true;
-          } else {
-            noteOn(ch, note, false);
+          // apply note if not bending
+          if (!didBend) {
+            if (note === 0) {
+              // do nothing
+            } else if (note === 1) {
+              chan.log.push('rel');
+              chan.state = 'rel';
+            } else if (note === 2) {
+              endFlag = true;
+            } else {
+              noteOn(chan, note, false);
+            }
           }
         }
-        const wait = this.patterns[patIndex][rowIndex].wait;
-        rowIndex++;
+        const wait = this.patterns[player.patIndex][player.rowIndex].wait;
+        player.rowIndex++;
         if (endFlag) {
           // end of pattern, load next one
-          seqIndex++;
-          if (seqIndex >= this.sequences[sequence].patterns.length) {
-            seqIndex = this.sequences[sequence].loopIndex;
-            loopsLeft--;
-            if (loopsLeft < 0) {
+          player.seqIndex++;
+          if (player.seqIndex >= this.sequences[sequence].patterns.length) {
+            player.seqIndex = this.sequences[sequence].loopIndex;
+            player.loopsLeft--;
+            if (player.loopsLeft < 0) {
               for (const chan of channels) {
                 if (chan.state === 'on') {
+                  chan.log.push('rel');
                   chan.state = 'rel';
                 }
               }
             }
           }
-          patIndex = this.sequences[sequence].patterns[seqIndex];
-          rowIndex = 0;
+          player.patIndex = this.sequences[sequence].patterns[player.seqIndex];
+          player.rowIndex = 0;
         }
-        tickLeft += wait * tickStart;
+        player.tickLeft += wait * player.tickStart;
       }
 
       // render frame
+      onFrame(player);
+
+      for (let ch = 0; ch < this.channelCount; ch++) {
+        const chan = channels[ch];
+
+        // advance envelopes
+        if (chan.state !== 'off' && chan.instIndex >= 0) {
+          const inst = this.instruments[chan.instIndex];
+          if (chan.state === 'rel') {
+            chan.envVolumeIndex++;
+            if (chan.envVolumeIndex >= inst.volume.env.length) {
+              chan.log.push('off');
+              chan.state = 'off';
+            } else if (chan.envPitchIndex < inst.pitch.env.length - 1) {
+              chan.envPitchIndex++;
+            }
+          } else { // note on
+            chan.envVolumeIndex++;
+            if (chan.envVolumeIndex >= inst.volume.sustain) {
+              chan.envVolumeIndex = inst.volume.attack;
+            }
+            chan.envPitchIndex++;
+            if (chan.envPitchIndex >= inst.pitch.sustain) {
+              chan.envPitchIndex = inst.pitch.attack;
+            }
+          }
+        }
+
+        // check for delayed notes
+        if (chan.delayedNote.left > 0) {
+          chan.delayedNote.left--;
+          if (chan.delayedNote.left <= 0) {
+            noteOn(chan, chan.delayedNote.note, true);
+          }
+        }
+        if (chan.delayedBend.left > 0) {
+          chan.delayedBend.left--;
+          if (chan.delayedBend.left <= 0) {
+            setBend(chan, chan.delayedBend.duration, chan.delayedBend.note, true);
+          }
+        }
+
+        // pitch bend
+        if (chan.basePitch !== chan.targetPitch) {
+          chan.bendCounter += 65536;
+          while (chan.bendCounter >= chan.bendCounterMax) {
+            chan.bendCounter -= chan.bendCounterMax;
+            if (chan.basePitch < chan.targetPitch) {
+              chan.basePitch++;
+            } else {
+              chan.basePitch--;
+            }
+          }
+        }
+      }
+
+      onFrameEnd(player);
+
+      if (player.loopsLeft < 0) {
+        player.endOfSongFade *= 0.9;
+        if (player.endOfSongFade < 0.001) {
+          break;
+        }
+      }
+    }
+  }
+
+  toWave(loop: number, sequence: number): number[] {
+    const out: number[] = [];
+    const channels = this.createChannels();
+
+    this.render(loop, sequence, channels, ({ endOfSongFade }) => {
       const output = Array.from({ length: 608 }).map(() => 0);
       for (let ch = 0; ch < this.channelCount; ch++) {
         const chan = channels[ch];
@@ -916,68 +1020,74 @@ export class Song {
           ),
         );
       }
-
-      for (let ch = 0; ch < this.channelCount; ch++) {
-        const chan = channels[ch];
-
-        // advance envelopes
-        if (chan.state !== 'off' && chan.instIndex >= 0) {
-          const inst = this.instruments[chan.instIndex];
-          if (chan.state === 'rel') {
-            chan.envVolumeIndex++;
-            if (chan.envVolumeIndex >= inst.volume.env.length) {
-              chan.state = 'off';
-            } else if (chan.envPitchIndex < inst.pitch.env.length - 1) {
-              chan.envPitchIndex++;
-            }
-          } else { // note on
-            chan.envVolumeIndex++;
-            if (chan.envVolumeIndex >= inst.volume.sustain) {
-              chan.envVolumeIndex = inst.volume.attack;
-            }
-            chan.envPitchIndex++;
-            if (chan.envPitchIndex >= inst.pitch.sustain) {
-              chan.envPitchIndex = inst.pitch.attack;
-            }
-          }
-        }
-
-        // check for delayed notes
-        if (chan.delayedNote.left > 0) {
-          chan.delayedNote.left--;
-          if (chan.delayedNote.left <= 0) {
-            noteOn(ch, chan.delayedNote.note, true);
-          }
-        }
-        if (chan.delayedBend.left > 0) {
-          chan.delayedBend.left--;
-          if (chan.delayedBend.left <= 0) {
-            setBend(ch, chan.delayedBend.duration, chan.delayedBend.note, true);
-          }
-        }
-
-        // pitch bend
-        if (chan.basePitch !== chan.targetPitch) {
-          chan.bendCounter += 65536;
-          while (chan.bendCounter >= chan.bendCounterMax) {
-            chan.bendCounter -= chan.bendCounterMax;
-            if (chan.basePitch < chan.targetPitch) {
-              chan.basePitch++;
-            } else {
-              chan.basePitch--;
-            }
-          }
-        }
-      }
-
-      if (loopsLeft < 0) {
-        endOfSongFade *= 0.9;
-        if (endOfSongFade < 0.001) {
-          break;
-        }
-      }
-    }
+    }, () => {});
 
     return out;
+  }
+
+  toImage(sequence: number, drawChannels: number[], drawBends: boolean): Uint8Array {
+    const channelIndexes = drawChannels.filter((ch) =>
+      Math.floor(ch) === ch && ch >= 0 && ch < this.channelCount
+    );
+    const channels = this.createChannels();
+    const chanState: ('on' | 'rel' | 'off')[] = Array.from({ length: this.channelCount }).map(() =>
+      'off'
+    );
+    const hue = (n: number) => Math.floor(((n * 1.618) % 1) * 360);
+    const patternPos: ({ pi: number; x: number; width: number })[] = [];
+    const pitches: ({ x: number; inst: number; pitch: number; noteOn: boolean })[] = [];
+    let x = 0;
+    this.render(1, sequence, channels, () => {}, (player) => {
+      if (player.loopsLeft < 0) {
+        return;
+      }
+
+      const pi = player.patIndex;
+      if (patternPos.length > 0 && patternPos[patternPos.length - 1].pi === pi) {
+        patternPos[patternPos.length - 1].width++;
+      } else {
+        patternPos.push({ pi, x, width: 1 });
+      }
+
+      for (const ch of channelIndexes) {
+        const chan = channels[ch];
+        let noteOn = false;
+        while (true) {
+          const s = chan.log.shift();
+          if (!s) {
+            break;
+          }
+          noteOn ||= s === 'on';
+          chanState[ch] = s;
+        }
+        if (chanState[ch] === 'on') {
+          const inst = this.instruments[chan.instIndex];
+          const finalPitch = chan.basePitch + inst.pitch.env[chan.envPitchIndex];
+          pitches.push({
+            x,
+            inst: chan.instIndex,
+            pitch: drawBends ? finalPitch : chan.noteOnPitch,
+            noteOn,
+          });
+        }
+      }
+
+      x++;
+    });
+    const cnv = canvas.createCanvas(x, 120 * 16);
+    const ctx = cnv.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, cnv.width, cnv.height);
+    ctx.lineWidth = 1;
+    ctx.lineCap = 'butt';
+    for (const { x, inst, pitch, noteOn } of pitches) {
+      const y = 120 * 16 - pitch - 16;
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, y);
+      ctx.lineTo(x + 0.5, y + 16);
+      ctx.strokeStyle = `hsl(${hue(inst)}, 100%, ${noteOn ? 75 : 50}%)`;
+      ctx.stroke();
+    }
+    return new Uint8Array(cnv.toBuffer('image/png').buffer);
   }
 }

@@ -8,6 +8,7 @@
 import { IMakeArgs, make } from './make.ts';
 import { IRenderArgs, render } from './render.ts';
 import { gba, IGbaArgs } from './gba.ts';
+import { IImageArgs, image } from './image.ts';
 import { argParse, Path } from './deps.ts';
 import version from '../version.json' assert { type: 'json' };
 
@@ -28,6 +29,7 @@ Command Summary:
   make      Convert a .sink song to a .gvsong binary file
   render    Render a .sink or .gvsong into a high-resolution .wav file
   gba       Generate a .gba ROM file that plays a .sink or .gvsong file
+  image     Generate a PNG of the patterns inside a .sink or .gvsong file
 
 For more help, try:
   gvsong <command> --help`);
@@ -192,6 +194,70 @@ function parseGbaArgs(args: string[]): number | IGbaArgs {
   };
 }
 
+function printImageHelp() {
+  console.log(`gvsong image <input> [-o <output>] [-s <sequence>] [-c <channels>] [-b]
+
+<input>        The input .sink or .gvsong file
+-o <output>    The output file (default: input with .png extension)
+-s <sequence>  The sequence to draw (default: 0)
+-c <channels>  The channels to draw (comma separated, ex: 0,1,2 -- default: all)
+-b             Show pitch bends (default: false)`);
+}
+
+function parseImageArgs(args: string[]): number | IImageArgs {
+  let badArgs = false;
+  const a = argParse(args, {
+    string: ['output', 'sequence', 'channels'],
+    boolean: ['help', 'bend'],
+    alias: { h: 'help', o: 'output', s: 'sequence', c: 'channels', b: 'bend' },
+    unknown: (_arg: string, key?: string) => {
+      if (key) {
+        console.error(`Unknown argument: -${key}`);
+        badArgs = true;
+        return false;
+      }
+      return true;
+    },
+  });
+  if (badArgs) {
+    return 1;
+  }
+  if (a.help) {
+    printImageHelp();
+    return 0;
+  }
+  if (a._.length <= 0) {
+    console.error('Missing input file');
+    return 1;
+  }
+  if (a._.length > 1) {
+    console.error('Can only have one input file');
+    return 1;
+  }
+  const input = a._[0] as string;
+  const output = a.output;
+  const sequence = parseFloat(a.sequence || '0');
+  if (isNaN(sequence)) {
+    console.error(`Bad sequence value: ${a.sequence}`);
+    return 1;
+  }
+  const channels = (a.channels || '0,1,2,3,4,5,6,7,8,9,10').split(',').map((ch) =>
+    parseInt(ch, 10)
+  );
+  if (channels.some(isNaN)) {
+    console.error(`Bad channels list: ${a.channels}`);
+    return 1;
+  }
+  const bend = !!a.bend;
+  return {
+    input,
+    output: output ?? path.replaceExt(input, '.png'),
+    channels,
+    sequence,
+    bend,
+  };
+}
+
 export async function main(args: string[]): Promise<number> {
   if (args.length <= 0 || args[0] === '-h' || args[0] === '--help') {
     printVersion();
@@ -219,6 +285,12 @@ export async function main(args: string[]): Promise<number> {
       return gbaArgs;
     }
     return await gba(gbaArgs);
+  } else if (args[0] === 'image') {
+    const imageArgs = parseImageArgs(args.slice(1));
+    if (typeof imageArgs === 'number') {
+      return imageArgs;
+    }
+    return await image(imageArgs);
   }
   return 0;
 }

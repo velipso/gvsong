@@ -48,6 +48,31 @@ export function defaultFileSystemContext(): IFileSystemContext {
   };
 }
 
+export async function makeOrReadFile(input: string): Promise<Song | string> {
+  const file = await Deno.open(input, { read: true });
+  const fileInfo = await file.stat();
+  if (!fileInfo.isFile) {
+    return `Not a file: ${input}`;
+  }
+  const header = new Uint8Array(4);
+  const bytesRead = await file.read(header);
+  Deno.close(file.rid);
+  const data = (
+      bytesRead === 4 &&
+      header[0] == 0xfb &&
+      header[1] == 0x67 &&
+      header[2] == 0x76 &&
+      header[3] == 0x73
+    )
+    ? await Deno.readFile(input)
+    : await makeFromFile(input, defaultFileSystemContext());
+  const song = Song.fromArray(data);
+  if (song === false) {
+    return `Bad file format: ${input}`;
+  }
+  return song;
+}
+
 export async function makeFromFile(input: string, fs: IFileSystemContext): Promise<Uint8Array> {
   const scr = sink.scr_new(
     {
