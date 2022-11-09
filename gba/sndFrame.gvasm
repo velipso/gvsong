@@ -799,6 +799,9 @@ flagEnd2:
   b     doneNote
 
 noteOff:
+  ldrx  t0, [channelPointer, #channel_st.state]
+  cmp   t0, #2
+  bne   doneNote
   movs  t0, #1
   strx  t0, [channelPointer, #channel_st.state]
   b     doneNote

@@ -879,8 +879,10 @@ export class Song {
             if (note === 0) {
               // do nothing
             } else if (note === 1) {
-              chan.log.push('rel');
-              chan.state = 'rel';
+              if (chan.state === 'on') {
+                chan.log.push('rel');
+                chan.state = 'rel';
+              }
             } else if (note === 2) {
               endFlag = true;
             } else {
@@ -1023,12 +1025,16 @@ export class Song {
 
       // write output
       for (let i = 0; i < output.length; i++) {
-        out.push(
-          Math.min(
-            32767,
-            Math.max(-32768, Math.round(output[i] * (output[i] < 0 ? 32768 : 32767))),
-          ),
+        const v = Math.min(
+          32767,
+          Math.max(-32768, Math.round(output[i] * (output[i] < 0 ? 32768 : 32767))),
         );
+        if (isNaN(v)) {
+          console.error('Error: NaN value detected');
+          out.push(0);
+        } else {
+          out.push(v);
+        }
       }
     }, () => {});
 
