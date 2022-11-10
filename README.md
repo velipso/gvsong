@@ -368,6 +368,8 @@ However, many tempos are not possible, so instead the song will pick the closest
 
 The actual tempos available are:
 
+| | | | | | | | |
+|-|-|-|-|-|-|-|-|
 | 44.99 | 65.00 |  84.96 | 104.95 | 124.97 | 144.93 | 164.77 | 184.78 |
 | 47.51 | 67.46 |  87.54 | 107.57 | 127.44 | 147.40 | 167.44 | 187.46 |
 | 49.99 | 70.01 |  89.98 | 110.08 | 130.00 | 149.97 | 170.19 | 190.22 |
