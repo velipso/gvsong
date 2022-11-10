@@ -103,26 +103,24 @@ An instrument consists of a wave type, volume envelope, and pitch envelope.
 
 A wave type can be:
 
-| Type  | Description             |
-|-------|-------------------------|
-| `sq1` | Square wave (1/16 duty) |
-| `sq2` | Square wave (2/16 duty) |
-| `sq3` | Square wave (3/16 duty) |
-| `sq4` | Square wave (4/16 duty) |
-| `sq5` | Square wave (5/16 duty) |
-| `sq6` | Square wave (6/16 duty) |
-| `sq7` | Square wave (7/16 duty) |
-| `sq8` | Square wave (8/16 duty) |
-| `tri` | Triangle wave           |
-| `saw` | Saw wave                |
-| `sin` | Sine wave               |
-| `rnd` | Random noise            |
+| Type       | Description             |
+|------------|-------------------------|
+| `wave.sq1` | Square wave (1/16 duty) |
+| `wave.sq2` | Square wave (2/16 duty) |
+| `wave.sq3` | Square wave (3/16 duty) |
+| `wave.sq4` | Square wave (4/16 duty) |
+| `wave.sq5` | Square wave (5/16 duty) |
+| `wave.sq6` | Square wave (6/16 duty) |
+| `wave.sq7` | Square wave (7/16 duty) |
+| `wave.sq8` | Square wave (8/16 duty) |
+| `wave.tri` | Triangle wave           |
+| `wave.saw` | Saw wave                |
+| `wave.sin` | Sine wave               |
+| `wave.rnd` | Random noise            |
 
-An envelope is a list of values per frame, with a required sustain location (`SUS`), and an optional
-release location (`REL`).
+An envelope is a list of values per frame, with optional `LOOP` and `EXIT` markers.
 
-The volume envelope values should range from 0 to 16.  Values can go above 16, but will risk
-clipping.
+The volume envelope values should range from 0 to 16.
 
 The pitch envelope values should range from -128 to 127.  There are 16 steps between notes, so
 bending up a perfect fifth would be 112 (7 * 16).
@@ -137,33 +135,32 @@ gvsong {
   { // I01 Square 50% duty
 
     // wave:
-    sq8,
+    wave.sq8,
 
     // volume envelope:
-    {16, 15, 14, 13, SUS, 12, 11, REL, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0},
+    {16, 15, 14, 13, LOOP, 12, 11, EXIT, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1},
 
     // pitch envelope:
-    {0, 0, 0, 0, 0, 0, 0, 0, SUS, 0, 1, 2, 1, 0, -1, -2, -1, REL, 0}
+    {0, 0, 0, 0, 0, 0, 0, 0, LOOP, 0, 1, 2, 1, 0, -1, -2, -1, EXIT, 0}
   },
   { // I02 Hat
-    rnd,
-    {16, 14, 12, 10, 8, 6, 4, 2, SUS, 0},
-    {SUS, 0}
+    wave.rnd,
+    {16, 14, 12, 10, 8, 6, 4, 2},
+    {}
   }
 }, {
   ...
 ```
 
-When a note is played, an envelope will march through the values once per frame.  The `SUS` and
-`REL` locations aren't values -- they are markers.
+When a note is played, an envelope will march through the values once per frame.  The `LOOP` and
+`EXIT` locations aren't values -- they are markers.
 
-If the note is held down long enough, when the `REL` location is passed over, the envelope will loop
-back to the `SUS` location.  `SUS` is always required, but if `REL` isn't specified, it will default
-at the end of the list.
+If the note is held down long enough, when the `EXIT` location is passed over, the envelope will
+loop back to the `LOOP` location.
 
 For example, the square wave will use the volume envelope: 16, 15, 14, 13, 12, 11, 12, 11, 12, ...
 and keep repeating (12, 11) until the note is released.  Once released, the envelope will continue
-over the `REL` without looping.
+over the `EXIT` without looping.
 
 One thing to notice is that instruments start counting at `I01` (ranging from `I01` to `I64`,
 decimal).  This is because there is a special instrument `I00` that mutes the channel.
@@ -198,7 +195,7 @@ gvsong {
 Sequences
 ---------
 
-A sequence is a list of pattern indexes, with an optional `LOOP` point.
+A sequence is a list of pattern indexes, with optional `LOOP` and `EXIT` markers, like envelopes.
 
 For example:
 
@@ -212,14 +209,17 @@ gvsong {
 }, {
   // sequences
   {0, 1, 2, LOOP, 3, 4},
-  {0, LOOP, 1, 2, 3, 4}
+  {0, LOOP, 1, 2, EXIT, 3, 4}
 }, {
   ...
 ```
 
 This song defines two sequences.  The first sequence plays patterns 0, 1, 2, 3, 4, 3, 4, 3, 4, ...
-continuing with (3, 4) forever.  The second sequence plays 0, 1, 2, 3, 4, 1, 2, 3, 4, ... continuing
-with (1, 2, 3, 4) forever.
+continuing with (3, 4) forever.  The second sequence plays 0, 1, 2, 1, 2, ... continuing with (1, 2)
+forever.
+
+The `EXIT` sequence will never play in a game, but it will play when rendering to a .wav or .png
+file.
 
 Most songs have a single sequence, but for video games it might be useful to have slightly different
 sequences for different situations.
@@ -227,7 +227,7 @@ sequences for different situations.
 Patterns
 --------
 
-Patterns define the note and effect data played back per channels.
+Patterns define the note and effect data played back per channel.
 
 Songs have 6 monophonic channels.  Any channel can use any instrument, and operate independently of
 each other, with identical features.
@@ -330,7 +330,7 @@ volume, `V32`.
 #### Delay
 
 Delay is useful for creating echo effects.  The delay is measured in frames, so tempo will not
-affect it.  Delay will postpone note and bend commands.  Use `D00` to disable delay.
+affect it.  Delay will postpone note on, note off, and bend commands.  Use `D00` to disable delay.
 
 #### Instrument
 

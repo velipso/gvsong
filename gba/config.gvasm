@@ -47,17 +47,21 @@
 .end
 
 .struct songSeq_st
-  .u16 patLength
+  .u16 patLength // not used in GBA player
   .u16 loopIndex
+  .u16 exit
   .u16 patterns // variable length array
 .end
 
 .struct channel_st
   .i32 state // 0 off, 1 note released, 2 note on
   .i32 delay
-  .struct delayedNote
+  .struct delayedNoteOn
     .i32 left
     .i32 note
+  .end
+  .struct delayedNoteOff
+    .i32 left
   .end
   .struct delayedBend
     .i32 left

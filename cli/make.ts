@@ -7,7 +7,7 @@
 
 import * as sink from './sink.ts';
 import { Path } from './deps.ts';
-import { IEnvelope, Song } from './song.ts';
+import { ILoopExitList, Song } from './song.ts';
 
 export interface IMakeArgs {
   input: string;
@@ -104,8 +104,10 @@ export async function makeFromFile(input: string, fs: IFileSystemContext): Promi
     'gvsong',
     `
     declare gvsong 'github.com/velipso/gvsong'
-    var SUS = 'sus', REL = 'rel', LOOP = 'loop'
-    enum sq1, sq2, sq3, sq4, sq5, sq6, sq7, sq8, tri, saw, sin, rnd
+    var LOOP = 'LOOP', EXIT = 'EXIT'
+    namespace wave
+      enum sq1, sq2, sq3, sq4, sq5, sq6, sq7, sq8, tri, saw, sin, rnd
+    end
   `,
   );
 
@@ -171,7 +173,7 @@ export async function makeFromFile(input: string, fs: IFileSystemContext): Promi
         if (!Array.isArray(pitch)) {
           throw new Error(`Invalid pitch envelope for instrument ${i}: ${pitch}`);
         }
-        song.addInstrument(wave, volume as IEnvelope, pitch as IEnvelope);
+        song.addInstrument(wave, volume as ILoopExitList, pitch as ILoopExitList);
         i++;
       }
 
@@ -200,7 +202,7 @@ export async function makeFromFile(input: string, fs: IFileSystemContext): Promi
           throw new Error(`Expecting sequence ${i} to be an array of pattern indexes`);
         }
       }
-      song.setSequences(seqs as (number | 'loop')[][]);
+      song.setSequences(seqs as ILoopExitList[]);
 
       return sink.NIL;
     },

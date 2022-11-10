@@ -10,18 +10,18 @@ import tables from './tables.json' assert { type: 'json' };
 
 const TOTAL_SAMPLES = 5;
 
-export type IEnvelope = (number | 'sus' | 'rel')[];
+export type ILoopExitList = (number | 'LOOP' | 'EXIT')[];
 
-interface IInstrumentEnvelope {
-  env: number[];
-  attack: number;
-  sustain: number;
+interface ISequence {
+  seq: number[];
+  loop: number;
+  exit: number;
 }
 
 interface IInstrument {
   wave: number;
-  volume: IInstrumentEnvelope;
-  pitch: IInstrumentEnvelope;
+  volume: ISequence;
+  pitch: ISequence;
 }
 
 interface IPatternLine {
@@ -29,18 +29,16 @@ interface IPatternLine {
   wait: number;
 }
 
-interface ISequence {
-  patterns: number[];
-  loopIndex: number;
-}
-
 interface IChannel {
   state: 'off' | 'rel' | 'on';
   log: ('on' | 'rel' | 'off')[];
   delay: number;
-  delayedNote: {
+  delayedNoteOn: {
     left: number;
     note: number;
+  };
+  delayedNoteOff: {
+    left: number;
   };
   delayedBend: {
     left: number;
@@ -72,48 +70,67 @@ interface IPlayer {
   endOfSongFade: number;
 }
 
-function parseEnvelope(
-  envelope: IEnvelope,
+function parseLoopExitList(
+  list: ILoopExitList,
   low: number,
   high: number,
-): IInstrumentEnvelope | string {
-  const env: number[] = [];
-  let attack = -1;
-  let sustain = 0;
-  let gotRel = false;
-  for (const s of envelope) {
-    if (!gotRel) {
-      sustain = env.length;
-    }
-    if (s === 'sus') {
-      if (attack >= 0) {
-        return 'Canot define SUS multiple times';
+  maxLength: number,
+  sequence: boolean,
+): ISequence | string {
+  const seq: number[] = [];
+  let loop = -1;
+  let exit = -1;
+  for (const s of list) {
+    if (s === 'LOOP') {
+      if (loop >= 0) {
+        return 'Cannot define LOOP multiple times';
       }
-      attack = env.length;
-    } else if (s === 'rel') {
-      if (gotRel) {
-        return 'Cannot define REL multiple times';
+      loop = seq.length;
+    } else if (s === 'EXIT') {
+      if (loop < 0) {
+        return 'Cannot define EXIT before LOOP';
       }
-      gotRel = true;
+      if (exit >= 0) {
+        return 'Cannot define EXIT multiple times';
+      }
+      exit = seq.length;
     } else if (typeof s === 'number') {
       if (s < low || s > high) {
-        return `Envelope value out of range ${low}..${high}: ${s}`;
+        return `Value out of range ${low}..${high}: ${s}`;
       }
-      env.push(s);
+      seq.push(s);
     } else {
-      return 'Bad data';
+      return `Bad data: ${s}`;
     }
   }
-  if (!gotRel) {
-    sustain += 1;
+
+  if (sequence) {
+    if (seq.length <= 0) {
+      return 'Sequence cannot be empty';
+    }
+    if (loop < 0) {
+      loop = 0;
+    }
+  } else {
+    // all envelopes end with 0
+    if (seq.length <= 0 || seq[seq.length - 1] !== 0) {
+      seq.push(0);
+    }
+    if (loop < 0) {
+      loop = seq.length - 1;
+    }
   }
-  if (attack < 0) {
-    return 'Missing SUS';
+  if (exit < 0) {
+    exit = seq.length;
   }
-  if (env.length >= 256) {
-    throw new Error(`Envelope too large; max length of 255`);
+
+  if (seq.length > maxLength) {
+    return (
+      `${sequence ? 'Sequence' : 'Envelope'} too large; max of ${maxLength} but got ${seq.length}`
+    );
   }
-  return { env, attack, sustain };
+
+  return { seq, loop, exit };
 }
 
 function isEnd(cmd: number) {
@@ -251,14 +268,14 @@ export class Song {
         result.instruments.push({
           wave,
           volume: {
-            env: venv,
-            attack: vattack,
-            sustain: vsustain,
+            seq: venv,
+            loop: vattack,
+            exit: vsustain,
           },
           pitch: {
-            env: penv,
-            attack: pattack,
-            sustain: psustain,
+            seq: penv,
+            loop: pattack,
+            exit: psustain,
           },
         });
       }
@@ -267,12 +284,13 @@ export class Song {
       for (let i = 0; i < seqsLength; i++) {
         next = seqOffset[i];
         const patLength = u16();
-        const loopIndex = u16();
-        const patterns: number[] = [];
+        const loop = u16();
+        const exit = u16();
+        const seq: number[] = [];
         for (let j = 0; j < patLength; j++) {
-          patterns.push(u16());
+          seq.push(u16());
         }
-        result.sequences.push({ patterns, loopIndex });
+        result.sequences.push({ seq, loop, exit });
       }
 
       // patterns
@@ -379,21 +397,21 @@ export class Song {
       const instLabel = out.length;
       instOffset[i](instLabel);
       u16(wave); // wave
-      u8(volume.attack); // volume attack
-      u8(volume.sustain); // volume sustain
-      u8(volume.env.length); // volume length
-      u8(pitch.attack); // pitch attack
-      u8(pitch.sustain); // pitch sustain
-      u8(pitch.env.length); // pitch length
+      u8(volume.loop); // volume attack
+      u8(volume.exit); // volume sustain
+      u8(volume.seq.length); // volume length
+      u8(pitch.loop); // pitch attack
+      u8(pitch.exit); // pitch sustain
+      u8(pitch.seq.length); // pitch length
       const volumeOffset = rewrite16();
       const pitchOffset = rewrite16();
       volumeOffset(out.length - instLabel);
-      for (const e of volume.env) {
+      for (const e of volume.seq) {
         u8(e);
       }
       align(2);
       pitchOffset(out.length - instLabel);
-      for (const e of pitch.env) {
+      for (const e of pitch.seq) {
         u8(e);
       }
       align(2);
@@ -401,11 +419,12 @@ export class Song {
 
     // sequences
     for (let i = 0; i < this.sequences.length; i++) {
-      const { patterns, loopIndex } = this.sequences[i];
+      const { seq, loop, exit } = this.sequences[i];
       seqOffset[i](out.length);
-      u16(patterns.length);
-      u16(loopIndex);
-      for (const p of patterns) {
+      u16(seq.length);
+      u16(loop);
+      u16(exit);
+      for (const p of seq) {
         u16(p);
       }
     }
@@ -430,7 +449,7 @@ export class Song {
     return new Uint8Array(out);
   }
 
-  addInstrument(wave: number, volumeEnv: IEnvelope, pitchEnv: IEnvelope) {
+  addInstrument(wave: number, volumeEnv: ILoopExitList, pitchEnv: ILoopExitList) {
     const i = this.instruments.length;
     if (i >= 64) {
       throw new Error('Too many instruments; max of 64');
@@ -438,11 +457,11 @@ export class Song {
     if (wave < 0 || wave >= 12) {
       throw new Error(`Invalid wave for instrument ${i}; expecting number 0-11 but got: ${wave}`);
     }
-    const volume = parseEnvelope(volumeEnv, 0, 16);
+    const volume = parseLoopExitList(volumeEnv, 0, 16, 255, false);
     if (typeof volume === 'string') {
       throw new Error(`Invalid volume envelope for instrument ${i}: ${volume}`);
     }
-    const pitch = parseEnvelope(pitchEnv, -128, 127);
+    const pitch = parseLoopExitList(pitchEnv, -128, 127, 255, false);
     if (typeof pitch === 'string') {
       throw new Error(`Invalid pitch envelope for instrument ${i}: ${pitch}`);
     }
@@ -645,46 +664,24 @@ export class Song {
       }
       result.push(plines);
     }
-    if (result.length >= 65536) {
+    if (result.length > 65535) {
       throw new Error(`Too many patterns; max of 65535`);
     }
     this.patterns = result;
     return this;
   }
 
-  setSequences(sequences: (number | 'loop')[][]) {
+  setSequences(sequences: ILoopExitList[]) {
     const result: ISequence[] = [];
     for (let i = 0; i < sequences.length; i++) {
-      const seq = sequences[i];
-      const patterns: number[] = [];
-      let loopIndex = -1;
-      for (const s of seq) {
-        if (s === 'loop') {
-          if (loopIndex >= 0) {
-            throw new Error(`Cannot define multiple loop points in sequence ${i}`);
-          }
-          loopIndex = patterns.length;
-        } else if (typeof s === 'number') {
-          if (s < 0 || s >= this.patterns.length) {
-            throw new Error(`Invalid pattern index ${s} in sequence ${i}`);
-          }
-          patterns.push(s);
-        } else {
-          throw new Error(`Bad data in sequence ${i}`);
-        }
+      const seq = parseLoopExitList(sequences[i], 0, this.patterns.length - 1, 65535, true);
+      if (typeof seq === 'string') {
+        throw new Error(`Invalid sequence ${i}: ${seq}`);
       }
-      if (loopIndex < 0) {
-        loopIndex = 0;
-      }
-      result.push({ patterns, loopIndex });
+      result.push(seq);
     }
-    if (result.length >= 256) {
+    if (result.length > 255) {
       throw new Error('Too many sequences; max of 255');
-    }
-    for (let i = 0; i < result.length; i++) {
-      if (result[i].patterns.length >= 65536) {
-        throw new Error(`Too many patterns in sequence ${i}; max of 65535`);
-      }
     }
     this.sequences = result;
     return this;
@@ -697,9 +694,12 @@ export class Song {
         state: 'off',
         log: [],
         delay: 0,
-        delayedNote: {
+        delayedNoteOn: {
           left: 0,
           note: 0,
+        },
+        delayedNoteOff: {
+          left: 0,
         },
         delayedBend: {
           left: 0,
@@ -740,7 +740,7 @@ export class Song {
       tick16thLeft: 0,
       total16th: 0,
       seqIndex: 0,
-      patIndex: this.sequences[sequence].patterns[0],
+      patIndex: this.sequences[sequence].seq[0],
       rowIndex: 0,
       loopsLeft: loop - 1,
       endOfSongFade: 1,
@@ -748,8 +748,8 @@ export class Song {
 
     const noteOn = (chan: IChannel, note: number, immediately: boolean) => {
       if (!immediately && chan.delay > 0) {
-        chan.delayedNote.left = chan.delay;
-        chan.delayedNote.note = note;
+        chan.delayedNoteOn.left = chan.delay;
+        chan.delayedNoteOn.note = note;
       } else {
         chan.log.push('on');
         chan.state = 'on';
@@ -759,6 +759,17 @@ export class Song {
         chan.basePitch = note << 4;
         chan.noteOnPitch = note << 4;
         chan.targetPitch = note << 4;
+      }
+    };
+
+    const noteOff = (chan: IChannel, immediately: boolean) => {
+      if (!immediately && chan.delay > 0) {
+        chan.delayedNoteOff.left = chan.delay;
+      } else {
+        if (chan.state === 'on') {
+          chan.log.push('rel');
+          chan.state = 'rel';
+        }
       }
     };
 
@@ -788,7 +799,7 @@ export class Song {
       // advance tick counter
       player.tickLeft -= 256;
       player.tick16thLeft -= 256;
-      while (player.tickLeft <= 0 && player.loopsLeft >= 0) {
+      while (player.tickLeft <= 0 && player.seqIndex < this.sequences[sequence].seq.length) {
         // perform tick
         let endFlag = false;
         for (let ch = 0; ch < this.channelCount; ch++) {
@@ -821,7 +832,8 @@ export class Song {
                   chan.basePitch = 0;
                   chan.noteOnPitch = 0;
                   chan.targetPitch = 0;
-                  chan.delayedNote.left = 0;
+                  chan.delayedNoteOn.left = 0;
+                  chan.delayedNoteOff.left = 0;
                   chan.delayedBend.left = 0;
                   chan.instIndex = -1;
                   break;
@@ -831,7 +843,8 @@ export class Song {
                   chan.basePitch = 0;
                   chan.noteOnPitch = 0;
                   chan.targetPitch = 0;
-                  chan.delayedNote.left = 0;
+                  chan.delayedNoteOn.left = 0;
+                  chan.delayedNoteOff.left = 0;
                   chan.delayedBend.left = 0;
                   chan.instIndex = -2;
                   break;
@@ -859,7 +872,8 @@ export class Song {
               chan.basePitch = 0;
               chan.noteOnPitch = 0;
               chan.targetPitch = 0;
-              chan.delayedNote.left = 0;
+              chan.delayedNoteOn.left = 0;
+              chan.delayedNoteOff.left = 0;
               chan.delayedBend.left = 0;
               chan.instIndex = payload;
               break;
@@ -879,10 +893,7 @@ export class Song {
             if (note === 0) {
               // do nothing
             } else if (note === 1) {
-              if (chan.state === 'on') {
-                chan.log.push('rel');
-                chan.state = 'rel';
-              }
+              noteOff(chan, false);
             } else if (note === 2) {
               endFlag = true;
             } else {
@@ -895,20 +906,23 @@ export class Song {
         if (endFlag) {
           // end of pattern, load next one
           player.seqIndex++;
-          if (player.seqIndex >= this.sequences[sequence].patterns.length) {
-            player.seqIndex = this.sequences[sequence].loopIndex;
-            player.loopsLeft--;
-            if (player.loopsLeft < 0) {
-              for (const chan of channels) {
-                if (chan.state === 'on') {
-                  chan.log.push('rel');
-                  chan.state = 'rel';
-                }
+          if (player.loopsLeft >= 1) {
+            if (player.seqIndex >= this.sequences[sequence].exit) {
+              player.seqIndex = this.sequences[sequence].loop;
+              player.loopsLeft--;
+            }
+          }
+          if (player.seqIndex < this.sequences[sequence].seq.length) {
+            player.patIndex = this.sequences[sequence].seq[player.seqIndex];
+            player.rowIndex = 0;
+          } else {
+            for (const chan of channels) {
+              if (chan.state === 'on') {
+                chan.log.push('rel');
+                chan.state = 'rel';
               }
             }
           }
-          player.patIndex = this.sequences[sequence].patterns[player.seqIndex];
-          player.rowIndex = 0;
         }
         player.tickLeft += wait * player.tickStart;
       }
@@ -928,29 +942,35 @@ export class Song {
           const inst = this.instruments[chan.instIndex];
           if (chan.state === 'rel') {
             chan.envVolumeIndex++;
-            if (chan.envVolumeIndex >= inst.volume.env.length) {
+            if (chan.envVolumeIndex >= inst.volume.seq.length) {
               chan.log.push('off');
               chan.state = 'off';
-            } else if (chan.envPitchIndex < inst.pitch.env.length - 1) {
+            } else if (chan.envPitchIndex < inst.pitch.seq.length - 1) {
               chan.envPitchIndex++;
             }
           } else { // note on
             chan.envVolumeIndex++;
-            if (chan.envVolumeIndex >= inst.volume.sustain) {
-              chan.envVolumeIndex = inst.volume.attack;
+            if (chan.envVolumeIndex >= inst.volume.exit) {
+              chan.envVolumeIndex = inst.volume.loop;
             }
             chan.envPitchIndex++;
-            if (chan.envPitchIndex >= inst.pitch.sustain) {
-              chan.envPitchIndex = inst.pitch.attack;
+            if (chan.envPitchIndex >= inst.pitch.exit) {
+              chan.envPitchIndex = inst.pitch.loop;
             }
           }
         }
 
         // check for delayed notes
-        if (chan.delayedNote.left > 0) {
-          chan.delayedNote.left--;
-          if (chan.delayedNote.left <= 0) {
-            noteOn(chan, chan.delayedNote.note, true);
+        if (chan.delayedNoteOn.left > 0) {
+          chan.delayedNoteOn.left--;
+          if (chan.delayedNoteOn.left <= 0) {
+            noteOn(chan, chan.delayedNoteOn.note, true);
+          }
+        }
+        if (chan.delayedNoteOff.left > 0) {
+          chan.delayedNoteOff.left--;
+          if (chan.delayedNoteOff.left <= 0) {
+            noteOff(chan, true);
           }
         }
         if (chan.delayedBend.left > 0) {
@@ -959,7 +979,6 @@ export class Song {
             setBend(chan, chan.delayedBend.duration, chan.delayedBend.note, true);
           }
         }
-        // TODO: delayedNoteOff?
 
         // pitch bend
         if (chan.basePitch !== chan.targetPitch) {
@@ -977,7 +996,7 @@ export class Song {
 
       onFrameEnd(player);
 
-      if (player.loopsLeft < 0) {
+      if (player.seqIndex >= this.sequences[sequence].seq.length) {
         player.endOfSongFade *= 0.9;
         if (player.endOfSongFade < 0.001) {
           break;
@@ -1001,8 +1020,8 @@ export class Song {
         } else {
           const inst = this.instruments[chan.instIndex];
           const finalVolume = endOfSongFade * chan.chanVolume *
-            inst.volume.env[chan.envVolumeIndex] / 16;
-          const finalPitch = chan.basePitch + inst.pitch.env[chan.envPitchIndex];
+            inst.volume.seq[chan.envVolumeIndex] / 16;
+          const finalPitch = chan.basePitch + inst.pitch.seq[chan.envPitchIndex];
           const freq = 440 * Math.pow(2, ((finalPitch / 16) - 65) / 12);
           const dphase = freq * 2048 / 32768;
           if (inst.wave === 11) {
@@ -1097,10 +1116,10 @@ export class Song {
           } else {
             const inst = this.instruments[chan.instIndex];
             if (drawBends) {
-              pitch = chan.basePitch + inst.pitch.env[chan.envPitchIndex];
+              pitch = chan.basePitch + inst.pitch.seq[chan.envPitchIndex];
             }
             if (drawVolume) {
-              volume = inst.volume.env[chan.envVolumeIndex];
+              volume = inst.volume.seq[chan.envVolumeIndex];
             }
           }
           pitches.push({

@@ -380,17 +380,17 @@ released:
     b     continue
 
 continue:
-    // check for delayed notes
-    ldrx  t0, [channelPointer, #channel_st.delayedNote.left]
+    // check for delayed note on
+    ldrx  t0, [channelPointer, #channel_st.delayedNoteOn.left]
     cmp   t0, #0
-    beq   skipDelayedNote
+    beq   skipDelayedNoteOn
     subs  t0, #1
-    strx  t0, [channelPointer, #channel_st.delayedNote.left]
-    bne   skipDelayedNote
+    strx  t0, [channelPointer, #channel_st.delayedNoteOn.left]
+    bne   skipDelayedNoteOn
     // delay has been hit, so note on
     // (copied from below)
     .begin
-      ldrx  t1, [channelPointer, #channel_st.delayedNote.note]
+      ldrx  t1, [channelPointer, #channel_st.delayedNoteOn.note]
 
       movs  t0, #2
       strx  t0, [channelPointer, #channel_st.state]
@@ -404,7 +404,25 @@ continue:
       strx  t0, [channelPointer, #channel_st.basePitch]
       strx  t0, [channelPointer, #channel_st.targetPitch]
     .end
-skipDelayedNote:
+skipDelayedNoteOn:
+
+    // check for delayed note off
+    ldrx  t0, [channelPointer, #channel_st.delayedNoteOff.left]
+    cmp   t0, #0
+    beq   skipDelayedNoteOff
+    subs  t0, #1
+    strx  t0, [channelPointer, #channel_st.delayedNoteOff.left]
+    bne   skipDelayedNoteOff
+    // delay has been hit, so note off
+    // (copied from below)
+    .begin
+      ldrx  t0, [channelPointer, #channel_st.state]
+      cmp   t0, #2
+      bne   skipDelayedNoteOff
+      movs  t0, #1
+      strx  t0, [channelPointer, #channel_st.state]
+    .end
+skipDelayedNoteOff:
 
     // check for delayed bends
     ldrx  t0, [channelPointer, #channel_st.delayedBend.left]
@@ -569,7 +587,7 @@ nextSeq:
   ldr   seqIndexPointer, =IW.synth.seqIndex
   ldrx  seqIndex, [seqIndexPointer] (IW.synth.seqIndex)
   adds  seqIndex, #1
-  ldrx  t0, [seqBase, #songSeq_st.patLength]
+  ldrx  t0, [seqBase, #songSeq_st.exit]
   cmp   seqIndex, t0
   ldrxge seqIndex, [seqBase, #songSeq_st.loopIndex]
   str   seqIndex, [seqIndexPointer]
@@ -699,7 +717,8 @@ setInstrument:
   strx  t0, [channelPointer, #channel_st.state]
   strx  t0, [channelPointer, #channel_st.basePitch]
   strx  t0, [channelPointer, #channel_st.targetPitch]
-  strx  t0, [channelPointer, #channel_st.delayedNote.left]
+  strx  t0, [channelPointer, #channel_st.delayedNoteOn.left]
+  strx  t0, [channelPointer, #channel_st.delayedNoteOff.left]
   strx  t0, [channelPointer, #channel_st.delayedBend.left]
   // set instrument base pointer
   ldr   t0, =songBasePointer
@@ -724,7 +743,8 @@ setInstrument0:
   strx  t0, [channelPointer, #channel_st.state]
   strx  t0, [channelPointer, #channel_st.basePitch]
   strx  t0, [channelPointer, #channel_st.targetPitch]
-  strx  t0, [channelPointer, #channel_st.delayedNote.left]
+  strx  t0, [channelPointer, #channel_st.delayedNoteOn.left]
+  strx  t0, [channelPointer, #channel_st.delayedNoteOff.left]
   strx  t0, [channelPointer, #channel_st.delayedBend.left]
   b     doneEffect
 setInstrumentPcm:
@@ -735,7 +755,8 @@ setInstrumentPcm:
   strx  t0, [channelPointer, #channel_st.state]
   strx  t0, [channelPointer, #channel_st.basePitch]
   strx  t0, [channelPointer, #channel_st.targetPitch]
-  strx  t0, [channelPointer, #channel_st.delayedNote.left]
+  strx  t0, [channelPointer, #channel_st.delayedNoteOn.left]
+  strx  t0, [channelPointer, #channel_st.delayedNoteOff.left]
   strx  t0, [channelPointer, #channel_st.delayedBend.left]
   b     doneEffect
 
@@ -776,7 +797,7 @@ doneEffect:
   // (copied above for delay)
   ldrx  t0, [channelPointer, #channel_st.delay]
   cmp   t0, #0
-  bne   delayedNote
+  bne   delayedNoteOn
   movs  t0, #2
   strx  t0, [channelPointer, #channel_st.state]
   // TODO: maybe some instruments shouldn't reset phase?
@@ -789,9 +810,9 @@ doneEffect:
   strx  t0, [channelPointer, #channel_st.basePitch]
   strx  t0, [channelPointer, #channel_st.targetPitch]
   b     doneNote
-delayedNote:
-  strx  t0, [channelPointer, #channel_st.delayedNote.left]
-  strx  note, [channelPointer, #channel_st.delayedNote.note]
+delayedNoteOn:
+  strx  t0, [channelPointer, #channel_st.delayedNoteOn.left]
+  strx  note, [channelPointer, #channel_st.delayedNoteOn.note]
   b     doneNote
 
 flagEnd2:
@@ -799,11 +820,19 @@ flagEnd2:
   b     doneNote
 
 noteOff:
+  ldrx  t0, [channelPointer, #channel_st.delay]
+  cmp   t0, #0
+  bne   delayedNoteOff
+  // otherwise, note off
+  // (copied above for delay)
   ldrx  t0, [channelPointer, #channel_st.state]
   cmp   t0, #2
   bne   doneNote
   movs  t0, #1
   strx  t0, [channelPointer, #channel_st.state]
+  b     doneNote
+delayedNoteOff:
+  strx  t0, [channelPointer, #channel_st.delayedNoteOff.left]
   b     doneNote
 
 doneNote:
