@@ -523,7 +523,7 @@ export class Song {
           // - note off        OFF 0x01
           // - end pattern     END 0x02
           // - reserved        ??? 0x03-0x07
-          // - note on         C#5 0x08-0x7F   or 001-119
+          // - note on         C#5 0x08-0x7F   or 001-120
           let note = 0;
           if (inst[0] == '---') {
             note = 0;
@@ -538,7 +538,7 @@ export class Song {
               if (isNaN(note)) {
                 throw new Error(`Bad note ${inst[0]}: ${parts[ch]}`);
               }
-              note += 8;
+              note += 7;
             } else {
               const noteStr = inst[0].substr(0, 2);
               if (noteStr == 'C-') note = 0x08;
@@ -767,7 +767,7 @@ export class Song {
         chan.delayedBend.left = chan.delay;
         chan.delayedBend.duration = duration;
         chan.delayedBend.note = note;
-      } else {
+      } else { // TODO: should I check for chan.state === 'off'?
         chan.targetPitch = note << 4;
         if (duration <= 0) {
           chan.basePitch = note << 4;
@@ -959,6 +959,7 @@ export class Song {
             setBend(chan, chan.delayedBend.duration, chan.delayedBend.note, true);
           }
         }
+        // TODO: delayedNoteOff?
 
         // pitch bend
         if (chan.basePitch !== chan.targetPitch) {

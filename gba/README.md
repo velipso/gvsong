@@ -2,7 +2,7 @@ Building Instructions
 =====================
 
 The empty ROM is checked into the repo as `cli/rom.json`.  In order to create a demo ROM, the
-filename and `song.gvsong` is simply concatenated at the end of the data to produce `song.gba`.
+messages and `song.gvsong` is simply concatenated at the end of the data to produce `song.gba`.
 
 You can build `rom.json` by first installing [gvasm](https://github.com/velipso/gvasm).
 
