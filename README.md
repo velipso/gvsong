@@ -1,11 +1,11 @@
 gvsong
 ======
 
-Music engine for the Game Boy Advance written in gvasm assembly.  Includes a CLI tool for rendering
-songs at high-resolution and generating test GBA ROMs.
+Music engine for the Game Boy Advance written in [gvasm](https://github.com/velipso/gvasm) assembly.
+Includes a CLI tool for rendering songs at high-resolution and generating test GBA ROMs.
 
-Usage
-=====
+Install
+=======
 
 You'll need to install [deno](https://deno.land) on your operating system.
 
@@ -21,7 +21,8 @@ deno install --allow-read --allow-write -f -r \
 ```
 
 If this is your first time running `deno install`, you will need to add the deno binary directory to
-your path.
+your path.  See the page on [deno install](https://deno.land/manual@v1.27.2/tools/script_installer)
+for more information.
 
 In order to upgrade, simply run the above command again -- it will redownload the latest version and
 install it.
@@ -32,39 +33,41 @@ Run the tool via:
 gvsong --help
 ```
 
-Rendering a Demo
-================
-
-Try this:
+Usage
+=====
 
 ```
 gvsong render demo/song0.sink
 ```
 
-This will render the song at high-resolution at `demo/song0.wav`.
-
-Now, build a GBA ROM file:
+This will create `demo/song0.wav', which is a high-resolution version of the song.
 
 ```
 gvsong gba demo/song0.sink
 ```
 
-This will create `demo/song0.gba`, which uses the sound engine to play the same song.
+This will create `demo/song0.gba`, which can be loaded in an emulator or flash cart.  It uses the
+sound engine to play the same song.
 
-Lastly, you can output the intermediate .gvsong file via:
+```
+gvsong image demo/song0.sink
+```
+
+This will create `demo/song0.png`, which draws the notes to a piano roll.
 
 ```
 gvsong make demo/song0.sink
 ```
 
-This will create the binary `song0.gvsong`, which is what is loaded into memory by the GBA player.
+This will create the binary `demo/song0.gvsong`, which can be embedded in a game using the sound
+engine.
 
 Song Source Format
 ==================
 
 Source files use a modified version of the [sink](https://github.com/velipso/sink) scripting
 language.  [Read this tutorial](https://github.com/velipso/gvasm/blob/v2/docs/assembler/script.md)
-to get started.
+for more information on the sink language.
 
 That being said, writing a basic song doesn't require much knowledge of sink.  A song will have
 the basic structure:
@@ -281,7 +284,7 @@ multiple instructions at time `00`.  This alleviates the need to jam instruction
 line -- it's okay to have multiple rows.
 
 Also notice that there is a run `04`, `05`, `06`, `07`, `08` of sixteenth notes, but the next
-command is at `0C` -- skipping rows `09`, `0A`, and `0B`.
+command is at `0C`, skipping rows `09`, `0A`, and `0B`.
 
 Rows that do nothing (full of `---:---`) will be removed automatically to save space, so feel free
 to use them if you want to space things out in source code.
@@ -388,6 +391,10 @@ So if you want a tempo of 120, use the effect `120`, and the song will playback 
 ### Pattern END
 
 The note or effect can contain `END`, which signifies the end of the pattern.  The `END` row does
-not consume any time, and will immediately process the commands at the top of the next pattern.
+not consume any time, and will immediately process the commands at the top of the next pattern in
+the sequence.
 
-This means it is technically possible to enter an infinite loop.  Don't do that :-).
+Only one `END` instruction needs to exist, but it's fine to have multiple `END` on the same line.
+
+Be aware it is possible to create an infinite loop jumping between patterns without any note data,
+so don't do that! :-)
