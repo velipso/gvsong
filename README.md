@@ -40,7 +40,8 @@ Usage
 gvsong render demo/song0.sink
 ```
 
-This will create `demo/song0.wav', which is a high-resolution version of the song.
+This will create `demo/song0.wav`, which is a high-resolution version of the song, useful for
+testing and soundtracks.
 
 ```
 gvsong gba demo/song0.sink
