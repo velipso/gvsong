@@ -113,10 +113,19 @@ function parseLoopExitList(
     }
   } else {
     // all envelopes end with 0
-    if (seq.length <= 0 || seq[seq.length - 1] !== 0) {
+    if (seq.length <= 0) {
       seq.push(0);
-    }
-    if (loop < 0) {
+      loop = 0;
+      exit = 1;
+    } else if (seq[seq.length - 1] !== 0) {
+      if (loop < 0) {
+        loop = seq.length - 1;
+      }
+      if (exit < 0) {
+        exit = seq.length;
+      }
+      seq.push(0);
+    } else if (loop < 0) {
       loop = seq.length - 1;
     }
   }
@@ -155,17 +164,99 @@ for (let i = 0; i < 64; i++) {
     bendTable.push(bendCounterMax);
   }
 }
+
+const waveTable: number[] = [];
+let nextOffset = 16;
+function addInstToWaveTable(totalWaves: number, table: number[]) {
+  if (table.length !== 128) {
+    throw new Error('Bad table length');
+  }
+  for (const v of table) {
+    if (v >= totalWaves) {
+      throw new Error('Bad wave offset');
+    }
+    waveTable.push(nextOffset + v);
+  }
+  nextOffset += totalWaves;
+}
+
+// sq1-sq8
+for (let duty = 0; duty < 8; duty++) {
+  // deno-fmt-ignore
+  addInstToWaveTable(
+    10,
+    [
+      0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+      2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+      3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+      4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+      5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+      6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+      7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+      8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+      9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+    ]
+  );
+}
+
+// tri
 // deno-fmt-ignore
-const lowpassIndexTable = [
-   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-   0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2,
-   2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4,
-   4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6,
-   7, 7, 7, 7, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9,10,10,
-  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,
-  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,
-  10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,
-];
+addInstToWaveTable(
+  6,
+  [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+  ],
+);
+
+// saw
+// deno-fmt-ignore
+addInstToWaveTable(
+  7,
+  [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+    6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+  ],
+);
+
+// sin
+// deno-fmt-ignore
+addInstToWaveTable(
+  1,
+  [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ],
+);
 
 export class Song {
   channelCount = 6;
@@ -1027,15 +1118,15 @@ export class Song {
           if (inst.wave === 11) {
             // random noise
             for (let i = 0; i < 608; i++) {
-              const w = tables[2048 * (11 * 11) + (chan.phase >> 7)];
+              const w = tables[chan.phase >> 7];
               output[i] += finalVolume * w;
               chan.phase = (chan.phase + dphase) % (1 << 22);
             }
           } else {
             // oscillator
-            const lp = lowpassIndexTable[Math.floor(finalPitch / 16)];
+            const wave = waveTable[inst.wave * 128 + Math.floor(finalPitch / 16)] << 11;
             for (let i = 0; i < 608; i++) {
-              const w = tables[2048 * (11 * inst.wave + lp) + Math.floor(chan.phase)];
+              const w = tables[wave + Math.floor(chan.phase)];
               output[i] += finalVolume * w;
               chan.phase = (chan.phase + dphase) % 2048;
             }

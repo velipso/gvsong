@@ -11,7 +11,6 @@
 //
 
 const dutyCount = 8;
-const lowpassTable = [2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7];
 const maxPhaseBits = 11;
 const maxPhase = 1 << maxPhaseBits;
 const maxRndSample = 1 << 15;
@@ -58,13 +57,16 @@ function generateOscillator(
       saw * b_saw +
       triangle * b_triangle;
   }
-  real[0] = (2 * duty - 1) * square
+  // DC offset for square -- if left in, there is a lot of low frequency content in square waves
+  // real[0] = (2 * duty - 1) * square
   return {real, imag}
 }
 
+const waves: number[] = [];
+
 function addWave(
-  d: number[],
   name: string,
+  lowpassTable: number[],
   duty: number,
   square: number,
   sine: number,
@@ -81,7 +83,7 @@ function addWave(
       for (let i = 0; i < real.length; i++){
         v += imag[i] * Math.sin(xp * i) + real[i] * Math.cos(xp * i);
       }
-      d.push(v);
+      waves.push(v);
     }
   }
 }
@@ -93,18 +95,23 @@ function whisky1(i0: number){
   return z2 < 0 ? z2 + 4294967296 : z2;
 }
 
-const waves: number[] = [];
-for (let duty = 0; duty < dutyCount; duty++){
-  addWave(waves, `sq${duty + 1}`, (duty + 1) / (2 * dutyCount), 1, 0, 0, 0);
-}
-addWave(waves, 'tri', 0, 0, 0, 0, 1);
-addWave(waves, 'saw', 0, 0, 0, 1, 0);
-addWave(waves, 'sin', 0, 0, 1, 0, 0);
 console.log('rnd');
 for (let i = 0; i < maxRndSample; i++){
   const r = whisky1(i + 1) / 4294967295;
   waves.push(r * 2 - 1);
 }
+
+for (let duty = 0; duty < dutyCount; duty++){
+  addWave(
+    `sq${duty + 1}`,
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    (duty + 1) / (2 * dutyCount),
+    1, 0, 0, 0
+  );
+}
+addWave('tri', [0, 4, 6, 7, 8, 9], 0, 0, 0, 0, 1);
+addWave('saw', [0, 4, 5, 6, 7, 8, 9], 0, 0, 0, 1, 0);
+addWave('sin', [0], 0, 0, 1, 0, 0);
 
 const cliOutput = new URL('./cli/tables.json', import.meta.url).pathname;
 console.log(`Writing tables to: ${cliOutput}`);

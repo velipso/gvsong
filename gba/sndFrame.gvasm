@@ -8,12 +8,12 @@
 .import './main.gvasm' { songBasePointer }
 .import './config.gvasm' {
   IW, bufferSize, channel_st, song_st, songInst_st, songSeq_st,
-  pitchDivisionBits, lowpassCount, oscillatorCount, maxPhaseBits,
+  pitchDivisionBits, oscillatorCount, maxPhaseBits,
   maxPhaseQBits, maxRndSample
 }
 .import './sndTables.gvasm' {
-  volumeTable, instTable, oscillatorTable, dphaseTable,
-  lowpassIndexTable, tempoTable, bendTable
+  volumeTable, instTable, oscillatorTable, dphaseTable, waveTable,
+  tempoTable, bendTable
 }
 
 .begin sndFrame
@@ -120,10 +120,12 @@ doneTick:
       lsrs  ip, #pitchDivisionBits + 1
       lsls  ip, #1
 
-      ldr   t0, =lowpassIndexTable
-      ldrh  t0, [t0, ip]
-
-      ldrx  wave, [channelPointer, #channel_st.oscillatorPointer]
+      lsls  t0, #8
+      adds  t0, ip
+      ldr   wave, =waveTable
+      ldrh  t0, [wave, t0]
+      lsls  t0, #maxPhaseBits + 1
+      ldr   wave, =oscillatorTable
       adds  wave, t0
 
       // cache channelLeft and load didClear
@@ -184,7 +186,7 @@ doneTick:
       .regs t0, channelPointer, channelLeft, sampleLeft, output, \
         finalVolume, phase, dphase, sample0, sample1, phaseMask, wave
 
-      ldrx  wave, [channelPointer, #channel_st.oscillatorPointer]
+      ldr   wave, =oscillatorTable
 
       // cache channelLeft and load didClear
       str   channelLeft, [sp, #S.channelLeft]
@@ -728,18 +730,10 @@ setInstrument:
   ldr   t1, [t1, payload]
   adds  t1, t0
   strx  t1, [channelPointer, #channel_st.instBasePointer]
-  // set oscillator pointer
-  ldrx  t0, [t1, #songInst_st.wave]
-  ldr   t1, =lowpassCount * (1 << maxPhaseBits) * 2
-  muls  t0, t1
-  ldr   t1, =oscillatorTable
-  adds  t0, t1
-  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
   b     doneEffect
 setInstrument0:
   movs  t0, #0
   strx  t0, [channelPointer, #channel_st.instBasePointer]
-  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
   strx  t0, [channelPointer, #channel_st.state]
   strx  t0, [channelPointer, #channel_st.basePitch]
   strx  t0, [channelPointer, #channel_st.targetPitch]
@@ -751,7 +745,6 @@ setInstrumentPcm:
   movs  t0, #1
   strx  t0, [channelPointer, #channel_st.instBasePointer]
   movs  t0, #0
-  strx  t0, [channelPointer, #channel_st.oscillatorPointer]
   strx  t0, [channelPointer, #channel_st.state]
   strx  t0, [channelPointer, #channel_st.basePitch]
   strx  t0, [channelPointer, #channel_st.targetPitch]

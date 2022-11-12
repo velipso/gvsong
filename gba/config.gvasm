@@ -8,7 +8,6 @@
 .def maxChannelCount   = 6
 .def dutyCount         = 8
 .def oscillatorCount   = dutyCount + 3 // 8 squ + tri + saw + sin
-.def lowpassCount      = 11
 .def maxPhaseBits      = 11
 .def sampleRate        = 1 << 15
 .def pitchDivisionBits = 4 // how many freqs between notes (2^n)
@@ -76,7 +75,6 @@
   .i32 bendCounterMax
   .i32 envPitchIndex
   .i32 phase
-  .u32 oscillatorPointer
   .u32 instBasePointer
 .end
 
