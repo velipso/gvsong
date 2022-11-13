@@ -349,7 +349,8 @@ volume, `V32`.
 #### Delay
 
 Delay is useful for creating echo effects.  The delay is measured in frames, so tempo will not
-affect it.  Delay will postpone note on, note off, and bend commands.  Use `D00` to disable delay.
+affect it.  Delay will postpone note on, note off, note stop, and bend commands.  Use `D00` to
+disable delay.
 
 #### Instrument
 
