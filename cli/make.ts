@@ -106,7 +106,7 @@ export async function makeFromFile(input: string, fs: IFileSystemContext): Promi
     declare gvsong 'github.com/velipso/gvsong'
     var LOOP = 'LOOP', EXIT = 'EXIT'
     namespace wave
-      enum sq1, sq2, sq3, sq4, sq5, sq6, sq7, sq8, tri, saw, sin, ds1, ds2, rnd
+      enum rnd, sq1, sq2, sq3, sq4, sq5, sq6, sq7, sq8, tri, saw, sin, ds1, ds2
     end
   `,
   );

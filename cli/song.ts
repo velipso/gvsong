@@ -1157,7 +1157,7 @@ export class Song {
           const finalPitch = chan.basePitch + inst.pitch.seq[chan.envPitchIndex];
           const freq = 440 * Math.pow(2, ((finalPitch / 16) - 65) / 12);
           const dphase = freq * 2048 / 32768;
-          if (inst.wave === waveTableSize) {
+          if (inst.wave === 0) {
             // random noise
             for (let i = 0; i < 608; i++) {
               const w = tables[chan.phase >> 7];
@@ -1166,7 +1166,7 @@ export class Song {
             }
           } else {
             // oscillator
-            const wave = waveTable[inst.wave * 128 + Math.floor(finalPitch / 16)] << 11;
+            const wave = waveTable[(inst.wave - 1) * 128 + Math.floor(finalPitch / 16)] << 11;
             for (let i = 0; i < 608; i++) {
               const w = tables[wave + Math.floor(chan.phase)];
               output[i] += finalVolume * w;

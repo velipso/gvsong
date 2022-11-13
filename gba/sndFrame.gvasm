@@ -8,8 +8,7 @@
 .import './main.gvasm' { songBasePointer }
 .import './config.gvasm' {
   IW, bufferSize, channel_st, song_st, songInst_st, songSeq_st,
-  pitchDivisionBits, oscillatorCount, maxPhaseBits,
-  maxPhaseQBits, maxRndSample
+  pitchDivisionBits, maxPhaseBits, maxPhaseQBits, maxRndSample
 }
 .import './sndTables.gvasm' {
   volumeTable, instTable, oscillatorTable, dphaseTable, waveTable,
@@ -109,8 +108,9 @@ doneTick:
     ldrh  dphase, [dphase, ip]
 
     ldrx  t0, [instPointer, #songInst_st.wave]
-    cmp   t0, #oscillatorCount
+    cmp   t0, #0
     beq   renderRndInst
+    subs  t0, #1
     // otherwise, oscillator
 
     .begin renderOscInst

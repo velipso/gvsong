@@ -109,6 +109,7 @@ A wave type can be:
 
 | Type       | Description             |
 |------------|-------------------------|
+| `wave.rnd` | Random noise            |
 | `wave.sq1` | Square wave (1/16 duty) |
 | `wave.sq2` | Square wave (2/16 duty) |
 | `wave.sq3` | Square wave (3/16 duty) |
@@ -122,7 +123,6 @@ A wave type can be:
 | `wave.sin` | Sine wave               |
 | `wave.ds1` | Distorted triangle wave |
 | `wave.ds2` | Distorted square wave   |
-| `wave.rnd` | Random noise            |
 
 An envelope is a list of values per frame, with optional `LOOP` and `EXIT` markers.
 
