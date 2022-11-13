@@ -7,8 +7,8 @@
 
 import { canvas } from './deps.ts';
 import tables from './tables.json' assert { type: 'json' };
-
-const TOTAL_SAMPLES = 5;
+import pcmMeta from './pcm-meta.json' assert { type: 'json' };
+import pcmData from './pcm-data.json' assert { type: 'json' };
 
 export type ILoopExitList = (number | 'LOOP' | 'EXIT')[];
 
@@ -355,6 +355,7 @@ export class Song {
       for (let i = 0; i < 120; i++) {
         pcmMapping.push(u16());
       }
+      result.pcmMapping = pcmMapping;
 
       next = instTableOffset;
       const instOffset: number[] = [];
@@ -608,9 +609,9 @@ export class Song {
     }
     for (let i = 0; i < pcmMapping.length; i++) {
       const s = pcmMapping[i];
-      if (s < 0 || s >= TOTAL_SAMPLES) {
+      if (s < 0 || s >= pcmMeta.length) {
         throw new Error(
-          `Invalid PCM sample at index ${i}; must be between 0 and ${TOTAL_SAMPLES - 1}`,
+          `Invalid PCM sample at index ${i}; must be between 0 and ${pcmMeta.length - 1}`,
         );
       }
     }
@@ -674,7 +675,8 @@ export class Song {
           // - continue        --- 0x00
           // - note off        OFF 0x01
           // - end pattern     END 0x02
-          // - reserved        ??? 0x03-0x07
+          // - reserved        ??? 0x03-0x06
+          // - stop sound      000 0x07
           // - note on         C#5 0x08-0x7F   or 001-120
           let note = 0;
           if (inst[0] == '---') {
@@ -714,7 +716,7 @@ export class Song {
               }
               note += oct * 12;
             }
-            if (note < 0x08 || note > 0x7f) {
+            if (note < 0x07 || note > 0x7f) {
               throw new Error(`Note out of range: ${parts[ch]}`);
             }
           }
@@ -884,14 +886,25 @@ export class Song {
         chan.delayedNoteOn.left = chan.delay;
         chan.delayedNoteOn.note = note;
       } else {
-        chan.log.push('on');
-        chan.state = 'on';
-        chan.phase = 0;
-        chan.envVolumeIndex = 0;
-        chan.envPitchIndex = 0;
-        chan.basePitch = note << 4;
-        chan.noteOnPitch = note << 4;
-        chan.targetPitch = note << 4;
+        if (chan.instIndex === -2 && this.pcmMapping[note - 8] === 0) {
+          // ignore silent PCM sample
+          return;
+        }
+        if (note === 7) {
+          if (chan.state !== 'off') {
+            chan.log.push('off');
+            chan.state = 'off';
+          }
+        } else {
+          chan.log.push('on');
+          chan.state = 'on';
+          chan.phase = 0;
+          chan.envVolumeIndex = 0;
+          chan.envPitchIndex = 0;
+          chan.basePitch = note << 4;
+          chan.noteOnPitch = note << 4;
+          chan.targetPitch = note << 4;
+        }
       }
     };
 
@@ -1093,6 +1106,17 @@ export class Song {
           }
         }
 
+        // check for end of samples
+        if (chan.state !== 'off' && chan.instIndex === -2) {
+          const entry = (chan.basePitch >> 4) - 8;
+          const sample = this.pcmMapping[entry];
+          const { size } = pcmMeta[sample];
+          if (chan.phase >= size) {
+            chan.log.push('off');
+            chan.state = 'off';
+          }
+        }
+
         // check for delayed notes
         if (chan.delayedNoteOn.left > 0) {
           chan.delayedNoteOn.left--;
@@ -1149,7 +1173,15 @@ export class Song {
         if (chan.state === 'off' || chan.instIndex === -1) {
           continue;
         } else if (chan.instIndex === -2) {
-          // TODO: PCM
+          const finalVolume = endOfSongFade * chan.chanVolume;
+          const entry = (chan.basePitch >> 4) - 8;
+          const sample = this.pcmMapping[entry];
+          const { offset } = pcmMeta[sample];
+          for (let i = 0; i < 608; i++) {
+            const w = pcmData[offset + chan.phase];
+            output[i] += finalVolume * w;
+            chan.phase++;
+          }
         } else {
           const inst = this.instruments[chan.instIndex];
           const finalVolume = endOfSongFade * chan.chanVolume *
@@ -1245,7 +1277,7 @@ export class Song {
           let pitch = chan.noteOnPitch;
           let volume = 16;
           if (chan.instIndex === -2) {
-            // TODO: PCM
+            // PCM, use defaults
           } else {
             const inst = this.instruments[chan.instIndex];
             if (drawBends) {

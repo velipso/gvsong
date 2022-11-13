@@ -13,6 +13,26 @@
 oscillatorTable:
 .embed './tables.bin'
 
+pcmDataTable:
+.embed './pcm-data.bin'
+
+.align 4
+pcmOffsetTable:
+.script
+  var meta = pickle.val embed './pcm-meta.json'
+  for var row: meta
+    u32 row[1] * 2
+  end
+.end
+
+pcmSizeTable:
+.script
+  var meta = pickle.val embed './pcm-meta.json'
+  for var row: meta
+    u32 row[2]
+  end
+.end
+
 tempoTable:
 .script
   var sampleRate = lookup sampleRate

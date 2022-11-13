@@ -1,0 +1,5 @@
+[
+  { "name": "silence", "offset": 0, "size": 0 },
+  { "name": "kick1", "offset": 0, "size": 4256 },
+  { "name": "snare1", "offset": 4256, "size": 5472 }
+]

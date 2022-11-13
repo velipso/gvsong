@@ -12,7 +12,7 @@
 }
 .import './sndTables.gvasm' {
   volumeTable, instTable, oscillatorTable, dphaseTable, waveTable,
-  tempoTable, bendTable
+  tempoTable, bendTable, pcmDataTable, pcmOffsetTable, pcmSizeTable
 }
 
 .begin sndFrame
@@ -242,7 +242,28 @@ doneTick:
 
     .begin renderPcmInst
       .regs t0, channelPointer, channelLeft, sampleLeft, output, \
-        finalVolume, phase, dphase, sample0, sample1, r10-r11
+        finalVolume, phase, samplePointer, t1-t2, r10-r11
+
+      // convert basePitch to samplePointer
+      ldrx  t0, [channelPointer, #channel_st.basePitch]
+      lsrs  t0, #pitchDivisionBits
+      subs  t0, #8
+      lsls  t0, #1
+      ldr   t1, =songBasePointer
+      ldr   t2, =song_st.pcmMapping
+      adds  t1, t2
+      ldrh  t0, [t1, t0]
+      ldr   t1, =pcmOffsetTable
+      lsls  t0, #2
+      ldr   t0, [t1, t0]
+      ldr   samplePointer, =pcmDataTable
+      adds  samplePointer, t0
+
+      ldrx  finalVolume, [channelPointer, #channel_st.chanVolume]
+      ldrx  phase, [channelPointer, #channel_st.phase]
+
+      .regs t0, channelPointer, channelLeft, sampleLeft, output, \
+        finalVolume, phase, samplePointer, sample0, sample1, r10-r11
 
       // cache channelLeft and load didClear
       str   channelLeft, [sp, #S.channelLeft]
@@ -257,12 +278,20 @@ doneTick:
         lsls  sample0, #16
         asrs  sample0, #16
 
-        // TODO: this
         .begin renderPcmChannelTwice
-          movs  sample0, #0
-          adds  phase, dphase
-          movs  sample1, #0
-          adds  phase, dphase
+          lsls  t0, phase, #1
+          ldrsh t0, [samplePointer, t0]
+          muls  t0, finalVolume
+          asrs  t0, #6
+          adds  sample0, t0
+          adds  phase, #1
+
+          lsls  t0, phase, #1
+          ldrsh t0, [samplePointer, t0]
+          muls  t0, finalVolume
+          asrs  t0, #6
+          adds  sample1, t0
+          adds  phase, #1
         .end
 
         strh  sample0, [output, #0]
@@ -273,8 +302,6 @@ doneTick:
         bne   nextSample
       .end
 
-      lsls  phase, #32 - maxPhaseQBits
-      lsrs  phase, #32 - maxPhaseQBits
       strx  phase, [channelPointer, #channel_st.phase]
 
       // uncache channelLeft and load didClear
@@ -344,10 +371,14 @@ nextChannel:
     beq   released
 
     // otherwise, note is on
+    ldrx  t1, [channelPointer, #channel_st.instBasePointer]
+    cmp   t1, #0
+    beq   continue
+    cmp   t1, #1
+    beq   checkPcmSize
     // advance volume envelope and loop for sustain
     ldrx  t0, [channelPointer, #channel_st.envVolumeIndex]
     adds  t0, #1
-    ldrx  t1, [channelPointer, #channel_st.instBasePointer]
     ldrx  t2, [t1, #songInst_st.volumeEnv.sustain]
     cmp   t0, t2
     ldrxge t0, [t1, #songInst_st.volumeEnv.attack]
@@ -355,11 +386,29 @@ nextChannel:
     // advance pitch envelope and loop for sustain
     ldrx  t0, [channelPointer, #channel_st.envPitchIndex]
     adds  t0, #1
-    ldrx  t1, [channelPointer, #channel_st.instBasePointer]
     ldrx  t2, [t1, #songInst_st.pitchEnv.sustain]
     cmp   t0, t2
     ldrxge t0, [t1, #songInst_st.pitchEnv.attack]
     strx  t0, [channelPointer, #channel_st.envPitchIndex]
+    b     continue
+
+checkPcmSize:
+    // convert basePitch to sample size
+    ldrx  t0, [channelPointer, #channel_st.basePitch]
+    lsrs  t0, #pitchDivisionBits
+    subs  t0, #8
+    lsls  t0, #1
+    ldr   t1, =songBasePointer
+    ldr   t2, =song_st.pcmMapping
+    adds  t1, t2
+    ldrh  t0, [t1, t0]
+    ldr   t1, =pcmSizeTable
+    lsls  t0, #2
+    ldr   t0, [t1, t0]
+    ldrx  t1, [channelPointer, #channel_st.phase]
+    cmp   t1, t0
+    // if ran over sample size, so turn note off
+    bge   muteNote
     b     continue
 
 released:
@@ -392,8 +441,24 @@ continue:
     // delay has been hit, so note on
     // (copied from below)
     .begin
-      ldrx  t1, [channelPointer, #channel_st.delayedNoteOn.note]
+      ldrx  t2, [channelPointer, #channel_st.delayedNoteOn.note]
 
+      cmp   t2, #7
+      beq   noteStop
+      ldrx  t1, [channelPointer, #channel_st.instBasePointer]
+      cmp   t1, #1
+      bne   skipVerifyPcmSample
+      // convert note to sample size
+      ldr   t1, =songBasePointer
+      ldr   t0, =song_st.pcmMapping
+      adds  t1, t0
+      movs  t0, t2
+      subs  t0, #8
+      lsls  t0, #1
+      ldrh  t0, [t1, t0]
+      cmp   t0, #0
+      beq   skipDelayedNoteOn
+skipVerifyPcmSample:
       movs  t0, #2
       strx  t0, [channelPointer, #channel_st.state]
       // TODO: maybe some instruments shouldn't reset phase?
@@ -402,9 +467,13 @@ continue:
       strx  t0, [channelPointer, #channel_st.phase]
       strx  t0, [channelPointer, #channel_st.envVolumeIndex]
       strx  t0, [channelPointer, #channel_st.envPitchIndex]
-      lsls  t0, t1, #pitchDivisionBits
+      lsls  t0, t2, #pitchDivisionBits
       strx  t0, [channelPointer, #channel_st.basePitch]
       strx  t0, [channelPointer, #channel_st.targetPitch]
+      b     skipDelayedNoteOn
+noteStop:
+      movs  t0, #0
+      strx  t0, [channelPointer, #channel_st.state]
     .end
 skipDelayedNoteOn:
 
@@ -791,6 +860,23 @@ doneEffect:
   ldrx  t0, [channelPointer, #channel_st.delay]
   cmp   t0, #0
   bne   delayedNoteOn
+
+  cmp   note, #7
+  beq   noteStop
+  ldrx  t1, [channelPointer, #channel_st.instBasePointer]
+  cmp   t1, #1
+  bne   skipVerifyPcmSample
+  // convert note to sample size
+  ldr   t1, =songBasePointer
+  ldr   t0, =song_st.pcmMapping
+  adds  t1, t0
+  movs  t0, note
+  subs  t0, #8
+  lsls  t0, #1
+  ldrh  t0, [t1, t0]
+  cmp   t0, #0
+  beq   doneNote
+skipVerifyPcmSample:
   movs  t0, #2
   strx  t0, [channelPointer, #channel_st.state]
   // TODO: maybe some instruments shouldn't reset phase?
@@ -802,6 +888,10 @@ doneEffect:
   lsls  t0, note, #pitchDivisionBits
   strx  t0, [channelPointer, #channel_st.basePitch]
   strx  t0, [channelPointer, #channel_st.targetPitch]
+  b     doneNote
+noteStop:
+  movs  t0, #0
+  strx  t0, [channelPointer, #channel_st.state]
   b     doneNote
 delayedNoteOn:
   strx  t0, [channelPointer, #channel_st.delayedNoteOn.left]

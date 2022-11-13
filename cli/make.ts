@@ -8,6 +8,7 @@
 import * as sink from './sink.ts';
 import { Path } from './deps.ts';
 import { ILoopExitList, Song } from './song.ts';
+import pcmMeta from './pcm-meta.json' assert { type: 'json' };
 
 export interface IMakeArgs {
   input: string;
@@ -107,6 +108,9 @@ export async function makeFromFile(input: string, fs: IFileSystemContext): Promi
     var LOOP = 'LOOP', EXIT = 'EXIT'
     namespace wave
       enum rnd, sq1, sq2, sq3, sq4, sq5, sq6, sq7, sq8, tri, saw, sin, ds1, ds2
+    end
+    namespace pcm
+      enum ${pcmMeta.map(({ name }) => name).join(', ')}
     end
   `,
   );

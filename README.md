@@ -91,8 +91,8 @@ An instrument defines a wave type (square, triangle, etc), volume envelope, and 
 song can have up to 64 instruments.
 
 A special PCM instrument exists in order to play samples directly (like kick or snare drum samples).
-The PCM mapping will map the 120 notes available to a PCM sample index.  At the time of writing,
-this feature isn't complete, so the PCM mapping will simply be a list of 120 zeroes.
+The PCM mapping will map the 120 notes available to a PCM sample index.  Use zero to set the entry
+to silence.
 
 A sequence is just a list of pattern numbers, and a loop point.  This defines what order the
 patterns are played back.  A song can have up to 255 sequences.
@@ -174,8 +174,9 @@ decimal).  This is because there is a special instrument `I00` that mutes the ch
 PCM Mapping
 -----------
 
-PCM mapping is a future feature for playing back samples, like kicks and snares.  For now, the
-mapping must be a list of 120 zeroes:
+The PCM map will allow you map a note to a PCM sample.  There are 120 slots available (`001`-`120`).
+
+[Check the PCM directory](./gen/pcm) for a list of samples included in gvsong.
 
 ```
 include 'gvsong'
@@ -184,18 +185,29 @@ gvsong {
   // instruments
 }, {
   // PCM mapping
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 1-12
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 13-24
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // ..etc
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+  pcm.kick1,  // 001
+  pcm.snare1, // 002
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0,       // 003-012
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 013-024
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 025-036
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 037-048
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 049-060
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 061-072
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 073-084
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 085-096
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 097-108
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0  // 109-120
 }, {
   ...
+```
+
+Once a sample has been mapped, it can be played back by selecting the `PCM` instrument, and playing
+the appropriate note (ex: `002`).
+
+```
+...
+30  002:PCM  ---:---  ---:---  ---:---  ---:---  ---:---
+...
 ```
 
 Sequences
@@ -311,9 +323,10 @@ The note can range from `C-0` to `B-9`, and use `#` or `b` for sharps and flats.
 `F#5` is F#, octave 5.  Tuning is based on `A-4` set to 440Hz.
 
 Notes can also be expressed as a three digit decimal number, from `001` (`C-0`) to `120` (`B-9`).
+It's easiest to use this format when playing back PCM samples.
 
-The note field can also contain special values: `---` for no event, `OFF` for note off, and `END`
-for pattern end.
+The note field can also contain special values: `---` for no event, `OFF` for note off (triggering
+release), `000` for note stop (skipping release), and `END` for pattern end.
 
 The effect field can have the following commands.  All parameters are in decimal.
 
