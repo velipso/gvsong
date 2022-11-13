@@ -167,6 +167,7 @@ for (let i = 0; i < 64; i++) {
 
 const waveTable: number[] = [];
 let nextOffset = 16;
+let waveTableSize = 0;
 function addInstToWaveTable(totalWaves: number, table: number[]) {
   if (table.length !== 128) {
     throw new Error('Bad table length');
@@ -178,6 +179,7 @@ function addInstToWaveTable(totalWaves: number, table: number[]) {
     waveTable.push(nextOffset + v);
   }
   nextOffset += totalWaves;
+  waveTableSize++;
 }
 
 // sq1-sq8
@@ -255,6 +257,44 @@ addInstToWaveTable(
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ],
+);
+
+// ds1
+// deno-fmt-ignore
+addInstToWaveTable(
+  6,
+  [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+  ],
+);
+
+// ds2
+// deno-fmt-ignore
+addInstToWaveTable(
+  6,
+  [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
   ],
 );
 
@@ -545,8 +585,10 @@ export class Song {
     if (i >= 64) {
       throw new Error('Too many instruments; max of 64');
     }
-    if (wave < 0 || wave >= 12) {
-      throw new Error(`Invalid wave for instrument ${i}; expecting number 0-11 but got: ${wave}`);
+    if (wave < 0 || wave > waveTableSize) {
+      throw new Error(
+        `Invalid wave for instrument ${i}; expecting number 0-${waveTableSize} but got: ${wave}`,
+      );
     }
     const volume = parseLoopExitList(volumeEnv, 0, 16, 255, false);
     if (typeof volume === 'string') {
@@ -1115,7 +1157,7 @@ export class Song {
           const finalPitch = chan.basePitch + inst.pitch.seq[chan.envPitchIndex];
           const freq = 440 * Math.pow(2, ((finalPitch / 16) - 65) / 12);
           const dphase = freq * 2048 / 32768;
-          if (inst.wave === 11) {
+          if (inst.wave === waveTableSize) {
             // random noise
             for (let i = 0; i < 608; i++) {
               const w = tables[chan.phase >> 7];

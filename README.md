@@ -120,6 +120,8 @@ A wave type can be:
 | `wave.tri` | Triangle wave           |
 | `wave.saw` | Saw wave                |
 | `wave.sin` | Sine wave               |
+| `wave.ds1` | Distorted triangle wave |
+| `wave.ds2` | Distorted square wave   |
 | `wave.rnd` | Random noise            |
 
 An envelope is a list of values per frame, with optional `LOOP` and `EXIT` markers.

@@ -7,7 +7,7 @@
 
 .def maxChannelCount   = 6
 .def dutyCount         = 8
-.def oscillatorCount   = dutyCount + 3 // 8 squ + tri + saw + sin
+.def oscillatorCount   = dutyCount + 5 // sq1-8+tri+saw+sin+ds1-2
 .def maxPhaseBits      = 11
 .def sampleRate        = 1 << 15
 .def pitchDivisionBits = 4 // how many freqs between notes (2^n)
