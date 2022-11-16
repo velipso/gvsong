@@ -11,7 +11,7 @@ You'll need to install [deno](https://deno.land) on your operating system.
 
 Then run:
 
-```
+```bash
 # install the latest release of deno
 deno upgrade
 
@@ -29,34 +29,34 @@ install it.
 
 Run the tool via:
 
-```
+```bash
 gvsong --help
 ```
 
 Usage
 =====
 
-```
+```bash
 gvsong render demo/song0.sink
 ```
 
 This will create `demo/song0.wav`, which is a high-resolution version of the song, useful for
 testing and soundtracks.
 
-```
+```bash
 gvsong gba demo/song0.sink
 ```
 
 This will create `demo/song0.gba`, which can be loaded in an emulator or flash cart.  It uses the
 sound engine to play the same song.
 
-```
+```bash
 gvsong image demo/song0.sink
 ```
 
 This will create `demo/song0.png`, which draws the notes to a piano roll.
 
-```
+```bash
 gvsong make demo/song0.sink
 ```
 

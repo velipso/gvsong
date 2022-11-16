@@ -10,33 +10,32 @@
 // This script will generate the rom.json file from gba/main.gvasm
 //
 
-async function checkGvasm(cmd: string) {
-  try {
-    const gv = await Deno.run({ cmd: [cmd, '--version'], stdout: 'piped', stderr: 'piped' });
-    if (!(await gv.status()).success) {
-      return false;
-    }
-    const output = new TextDecoder().decode(await gv.output()).match(/Version: (\d+)\.\d+\.\d+\b/);
-    return output && output[1] === '2';
-  } catch (_e) {
-    return false;
+try {
+  const gv = await Deno.run({ cmd: ['gvasm', '--version'], stdout: 'piped', stderr: 'piped' });
+  if (!(await gv.status()).success) {
+    throw '`gvasm --version` failed to execute';
   }
-}
-
-const gvasm = (await checkGvasm('gvasm'))
-  ? 'gvasm'
-  : (await checkGvasm('gvasm2'))
-  ? 'gvasm2'
-  : false;
-
-if (!gvasm) {
-  console.error(`Missing gvasm v2 -- please install by visiting:
+  const output = new TextDecoder().decode(await gv.output()).match(/Version: (\d+)\.\d+\.\d+\b/);
+  if (!output) {
+    throw '`gvasm --version` did not report a version';
+  }
+  if (output[1] !== '2') {
+    throw `Bad version for gvasm; required v2 but got v${output[1]}`;
+  }
+} catch (e) {
+  if (typeof e !== 'string') {
+    console.error(e);
+  }
+  console.error(`Failed to find gvasm v2 -- install by visiting:
   https://github.com/velipso/gvasm`);
+  if (typeof e === 'string') {
+    console.error(`Error: ${e}`);
+  }
   Deno.exit(1);
 }
 
 const mainGvasm = new URL('../gba/main.gvasm', import.meta.url).pathname;
-const make = await Deno.run({ cmd: [gvasm, 'make', mainGvasm] });
+const make = await Deno.run({ cmd: ['gvasm', 'make', mainGvasm] });
 await make.status();
 const rom = await Deno.readFile(new URL('../gba/main.gba', import.meta.url).pathname);
 const romOutput = new URL('../cli/rom.json', import.meta.url).pathname;
