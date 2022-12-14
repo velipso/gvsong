@@ -311,7 +311,7 @@ In order to allow more than 16 beats in a pattern, the timestamp extends hexadec
 letters for the first character.
 
 For example, `00` is the first beat, `F0` is the 16th beat, `G0` is the 17th beat, `H0` is the 18th
-beat, etc, up to `ZF` for the 36th beat, 15th sixteenth note.
+beat, etc, up to `ZF` for the 36th beat, last sixteenth note.
 
 ### Channel Instructions
 
