@@ -6,29 +6,28 @@
 //
 
 .import './config.gvasm' { IW, channel_st, song_st, songSeq_st }
-.import './main.gvasm' { songBasePointer }
 .import './sndTables.gvasm' { tempoTable }
 .import './memset32.gvasm' { memset32 }
 
-.begin sndLoadSong //(sequence)
+.begin sndLoadSong //(songBasePointer, sequence)
   .thumb
   push  {lr}
 
   // zero out synth
-  push  {r0}
+  push  {r0-r1}
   ldr   r0, =IW.synth
   movs  r1, #0
   ldr   r2, =IW.synth._bytes
   bl    memset32
-  pop   {r2}
+  pop   {r2-r3}
 
-  .regs t0-t1, sequence, songBase, r4-r11
+  .regs t0-t1, songBase, sequence, r4-r11
 
-  // save sequence
+  // save songBase + sequence
+  ldr   t0, =IW.synth.songBasePointer
+  strx  songBase, [t0] (IW.synth.songBasePointer)
   ldr   t0, =IW.synth.sequence
   strx  sequence, [t0] (IW.synth.sequence)
-
-  ldr   songBase, =songBasePointer
 
   // set pattern pointer to sequence's first pattern
   ldrx  t0, [songBase, #song_st.seqTableOffset]
@@ -46,7 +45,7 @@
   ldr   t1, =IW.synth.patPointer
   strx  t0, [t1] (IW.synth.patPointer)
 
-  .regs t0-t2, songBase, r4-r11
+  .regs t0-t1, songBase, t2, r4-r11
 
   // set tempo to index 0
   ldr   t1, =tempoTable
@@ -60,6 +59,7 @@
   // initialize channels
   ldr   t0, =IW.synth.channel[0]
   ldrx  t1, [songBase, #song_st.channelCount]
+
 nextChannel:
   // set channel volume
   movs  t2, #32

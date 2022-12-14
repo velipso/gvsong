@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: 0BSD
 //
 
-.import './main.gvasm' { songBasePointer }
 .import './config.gvasm' {
   IW, bufferSize, channel_st, song_st, songInst_st, songSeq_st,
   pitchDivisionBits, maxPhaseBits, maxPhaseQBits, maxRndSample
@@ -69,7 +68,8 @@ doneTick:
     finalVolume, phase, dphase, instPointer, r9-r11
 
   ldr   channelPointer, =IW.synth.channel[0]
-  ldr   t0, =songBasePointer
+  ldr   t0, =IW.synth.songBasePointer
+  ldrx  t0, [t0] (IW.synth.songBasePointer)
   ldrx  channelLeft, [t0, #song_st.channelCount]
   movs  t0, #0
   str   t0, [sp, #S.didClear]
@@ -249,7 +249,8 @@ doneTick:
       lsrs  t0, #pitchDivisionBits
       subs  t0, #8
       lsls  t0, #1
-      ldr   t1, =songBasePointer
+      ldr   t1, =IW.synth.songBasePointer
+      ldrx  t1, [t1] (IW.synth.songBasePointer)
       ldr   t2, =song_st.pcmMapping
       adds  t1, t2
       ldrh  t0, [t1, t0]
@@ -361,7 +362,8 @@ continue:
   // advance envelopes
   .begin advanceEnvelopes
     ldr   channelPointer, =IW.synth.channel[0]
-    ldr   t0, =songBasePointer
+    ldr   t0, =IW.synth.songBasePointer
+    ldrx  t0, [t0] (IW.synth.songBasePointer)
     ldrx  channelLeft, [t0, #song_st.channelCount]
 nextChannel:
     ldrx  t0, [channelPointer, #channel_st.state]
@@ -398,7 +400,8 @@ checkPcmSize:
     lsrs  t0, #pitchDivisionBits
     subs  t0, #8
     lsls  t0, #1
-    ldr   t1, =songBasePointer
+    ldr   t1, =IW.synth.songBasePointer
+    ldrx  t1, [t1] (IW.synth.songBasePointer)
     ldr   t2, =song_st.pcmMapping
     adds  t1, t2
     ldrh  t0, [t1, t0]
@@ -449,7 +452,8 @@ continue:
       cmp   t1, #1
       bne   skipVerifyPcmSample
       // convert note to sample size
-      ldr   t1, =songBasePointer
+      ldr   t1, =IW.synth.songBasePointer
+      ldrx  t1, [t1] (IW.synth.songBasePointer)
       ldr   t0, =song_st.pcmMapping
       adds  t1, t0
       movs  t0, t2
@@ -601,7 +605,8 @@ nextSample:
   push  {r4-r7, lr}
   .regs t0-t3, endFlag, channelLeft, patPointer, channelPointer, r8-r11
   movs  endFlag, #0
-  ldr   t0, =songBasePointer
+  ldr   t0, =IW.synth.songBasePointer
+  ldrx  t0, [t0] (IW.synth.songBasePointer)
   ldrx  channelLeft, [t0, #song_st.channelCount]
   ldr   channelPointer, =IW.synth.channel[0]
   ldr   patPointer, =IW.synth.patPointer
@@ -644,7 +649,8 @@ doneNextSeq:
 nextSeq:
   // end of pattern, load next one
   .regs t0-t1, songBase, patTable, seqBase, seqIndex, seqIndexPointer, delta, r8-r11
-  ldr   songBase, =songBasePointer
+  ldr   songBase, =IW.synth.songBasePointer
+  ldrx  songBase, [songBase] (IW.synth.songBasePointer)
   ldrx  seqBase, [songBase, #song_st.seqTableOffset]
   adds  seqBase, songBase
   ldr   t0, =IW.synth.sequence
@@ -792,7 +798,8 @@ setInstrument:
   strx  t0, [channelPointer, #channel_st.delayedNoteOff.left]
   strx  t0, [channelPointer, #channel_st.delayedBend.left]
   // set instrument base pointer
-  ldr   t0, =songBasePointer
+  ldr   t0, =IW.synth.songBasePointer
+  ldrx  t0, [t0] (IW.synth.songBasePointer)
   ldrx  t1, [t0, #song_st.instTableOffset]
   adds  t1, t0
   lsls  payload, #2
@@ -867,7 +874,8 @@ doneEffect:
   cmp   t1, #1
   bne   skipVerifyPcmSample
   // convert note to sample size
-  ldr   t1, =songBasePointer
+  ldr   t1, =IW.synth.songBasePointer
+  ldrx  t1, [t1] (IW.synth.songBasePointer)
   ldr   t0, =song_st.pcmMapping
   adds  t1, t0
   movs  t0, note

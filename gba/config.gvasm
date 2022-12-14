@@ -79,6 +79,7 @@
 
 .struct IW = 0x03000000
   .struct synth
+    .i32 songBasePointer
     .i32 sequence
     .i32 tempoIndex
     .i32 tickStart

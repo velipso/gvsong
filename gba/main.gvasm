@@ -89,7 +89,8 @@ iwramEnd:
   ldr   r0, =IW.masterVolume
   movs  r1, #16
   strx  r1, [r0] (IW.masterVolume)
-  movs  r0, #0
+  ldr   r0, =songBasePointerEOF
+  movs  r1, #0
   bl    sndLoadSong
 
   // initialize sound + IRQ
@@ -264,11 +265,13 @@ hitLeft:
     cmp   r4, #0
     beq   volumeDown
     // sequence down
-    ldr   r0, =IW.synth.sequence
-    ldrx  r0, [r0] (IW.synth.sequence)
-    cmp   r0, #0
+    ldr   r1, =IW.synth.sequence
+    ldrx  r1, [r1] (IW.synth.sequence)
+    cmp   r1, #0
     ble   nextFrame
-    subs  r0, #1
+    ldr   r0, =IW.synth.songBasePointer
+    ldrx  r0, [r0] (IW.synth.songBasePointer)
+    subs  r1, #1
     bl    sndLoadSong
     b     nextFrame
 volumeDown:
@@ -283,14 +286,15 @@ hitRight:
     cmp   r4, #0
     beq   volumeUp
     // sequence up
-    ldr   r0, =IW.synth.sequence
-    ldrx  r0, [r0] (IW.synth.sequence)
-    ldr   r1, =songBasePointer
-    ldrx  r1, [r1, #song_st.seqsLength]
-    subs  r1, #1
-    cmp   r0, r1
+    ldr   r0, =IW.synth.songBasePointer
+    ldrx  r0, [r0] (IW.synth.songBasePointer)
+    ldr   r1, =IW.synth.sequence
+    ldrx  r1, [r1] (IW.synth.sequence)
+    ldrx  r2, [r0, #song_st.seqsLength]
+    subs  r2, #1
+    cmp   r1, r2
     bge   nextFrame
-    adds  r0, #1
+    adds  r1, #1
     bl    sndLoadSong
     b     nextFrame
 volumeUp:
@@ -303,8 +307,10 @@ volumeUp:
     b     nextFrame
 hitStart:
     // restart sequence
-    ldr   r0, =IW.synth.sequence
-    ldrx  r0, [r0] (IW.synth.sequence)
+    ldr   r0, =IW.synth.songBasePointer
+    ldrx  r0, [r0] (IW.synth.songBasePointer)
+    ldr   r1, =IW.synth.sequence
+    ldrx  r1, [r1] (IW.synth.sequence)
     bl    sndLoadSong
     b     nextFrame
   .end
@@ -407,5 +413,5 @@ tileData:
 .align 1024
 songMessages:
 // three song messages will be concatenated first, with 32 chars each
-.def songBasePointer = songMessages + 32*3
+.def songBasePointerEOF = songMessages + 32*3
 // then the song itself
