@@ -7,7 +7,8 @@
 
 .import './config.gvasm' {
   IW, bufferSize, channel_st, song_st, songInst_st, songSeq_st,
-  pitchDivisionBits, maxPhaseBits, maxPhaseQBits, maxRndSample
+  pitchDivisionBits, maxPhaseBits, maxPhaseQBits, maxRndSample,
+  maxSfxCount, sfx_st
 }
 .import './sndTables.gvasm' {
   volumeTable, instTable, oscillatorTable, dphaseTable, waveTable,
@@ -24,6 +25,7 @@
     .i32 output
     .i32 didClear
     .i32 channelLeft
+    .i32 sfxPointer[maxSfxCount]
   .end
   push  {r4-r11, lr}
   .if S._bytes > 0
@@ -318,11 +320,34 @@ continue:
     bne   nextChannel
   .end
 
-  .regs t0-t3, musicVol, output, input, sampleLeft, sample, \
-    didClear, r10-r11
+  .regs t0-t1, sfxSample, sfxSampleIndex, sfxVol, musicSample, \
+    musicVol, input, output, sampleLeft, didClear, masterVol
 
-  ldr   musicVol, =IW.masterVolume
-  ldrx  musicVol, [musicVol] (IW.masterVolume)
+  ldr   musicVol, =IW.musicVolume
+  ldrx  musicVol, [musicVol] (IW.musicVolume)
+  ldr   sfxVol, =IW.sfxVolume
+  ldrx  sfxVol, [sfxVol] (IW.sfxVolume)
+  ldr   masterVol, =IW.masterVolume
+  ldrx  masterVol, [masterVol] (IW.masterVolume)
+
+  // prepare sfx pointers
+  ldr   t0, =IW.sfx
+  .script
+    var maxSfxCount = lookup maxSfxCount
+    for var i: range maxSfxCount
+      put "ldrx  t1, [t0, #sfx_st.basePointer]"
+      put "cmp   t1, #0"
+      put "beq   +"
+      put "ldrx  ip, [t0, #sfx_st.currentPos]"
+      put "adds  t1, ip"
+      put "+"
+      put "str   t1, [sp, #S.sfxPointer[$i]]"
+      if i < maxSfxCount - 1
+        put "adds  t0, #sfx_st._bytes"
+      end
+    end
+  .end
+  movs  sfxSampleIndex, #0
 
   // restore buffer address from earlier
   ldr   didClear, [sp, #S.didClear]
@@ -331,14 +356,31 @@ continue:
   movs  sampleLeft, #bufferSize
   .begin nextSample
     cmp   didClear, #0
-    moveq sample, #0
-    ldrshne sample, [input]
+    moveq musicSample, #0
+    ldrshne musicSample, [input]
 
-    // apply global volume
-    muls  t0, sample, musicVol
-    asrs  t0, #4 + 7
+    // apply music volume
+    muls  musicSample, musicVol
+    asrs  musicSample, #7
 
-    // TODO: sound effects
+    // sound effects
+    movs  sfxSample, #0
+    .script
+      var maxSfxCount = lookup maxSfxCount
+      for var i: range maxSfxCount
+        put "ldr  t0, [sp, #S.sfxPointer[$i]]"
+        put "cmp  t0, #0"
+        put "ldrsbne t0, [t0, sfxSampleIndex]"
+        put "adds sfxSample, t0"
+      end
+    .end
+    muls  sfxSample, sfxVol
+
+    adds  t0, musicSample, sfxSample
+
+    // apply master volume
+    muls  t0, masterVol
+    asrs  t0, #8
 
     // clamp
     adds  t0, #128
@@ -353,8 +395,38 @@ continue:
 
     adds  input, #2
     adds  output, #1
+    adds  sfxSampleIndex, #1
     subs  sampleLeft, #1
     bne   nextSample
+  .end
+
+  .regs t0-t11
+
+  // advance sfx
+  ldr   t0, =IW.sfx
+  .script
+    var maxSfxCount = lookup maxSfxCount
+    for var i: range maxSfxCount
+      var lblContinue = "+"
+      var lblEndOfSample = "++"
+      put "ldrx  t1, [t0, #sfx_st.basePointer]"
+      put "cmp   t1, #0"
+      put "beq   $lblContinue"
+      put "ldrx  t2, [t0, #sfx_st.currentPos]"
+      put "adds  t2, #bufferSize"
+      put "ldrx  t3, [t0, #sfx_st.length]"
+      put "cmp   t2, t3"
+      put "bge   $lblEndOfSample"
+      put "strx  t2, [t0, #sfx_st.currentPos]"
+      put "b     $lblContinue"
+      put "$lblEndOfSample"
+      put "movs  t1, #0"
+      put "strx  t1, [t0, #sfx_st.basePointer]"
+      put "$lblContinue"
+      if i < maxSfxCount - 1
+        put "adds  t0, #sfx_st._bytes"
+      end
+    end
   .end
 
   .regs t0-t3, channelPointer, channelLeft, r6-r11
@@ -587,9 +659,21 @@ skipBend:
     b     advanceEnvelopes.continue
   .end
   .begin muteAllSound
+    movs  t2, #0
+    // clear all sound effects
+    ldr   t0, =IW.sfx
+    .script
+      var maxSfxCount = lookup maxSfxCount
+      for var i: range maxSfxCount
+        put "strx  t2, [t0, #sfx_st.basePointer]"
+        if i < maxSfxCount - 1
+          put "adds  t0, #sfx_st._bytes"
+        end
+      end
+    .end
+    // clear output buffer
     ldr   t0, [sp, #S.output]
     movs  t1, #bufferSize
-    movs  t2, #0
 nextSample:
     str   t2, [t0]
     adds  t0, #4

@@ -1,0 +1,66 @@
+//
+// gvsong - Builds and renders songs designed for Game Boy Advance
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvsong
+// SPDX-License-Identifier: 0BSD
+//
+
+.import './config.gvasm' { IW, maxSfxCount, sfx_st }
+
+//
+// Sample requirements:
+//   Bit depth: 8
+//   Sample rate: 32768 hz
+//   Byte length: Must be a multiple of 608  **IMPORTANT**
+//
+// Priority:
+//   If all sound effect slots are taken, then a new sound effect will
+//   stomp any existing effect of equal or higher priority value.
+//
+//   For example, if something is playing at priority 2, a new sound
+//   at priority 3 cannot stomp it.  But it will stomp existing sounds
+//   at priority 3 or higher.
+//
+
+.begin sndPlaySfx //(sampleBasePointer, byteLength, priority)
+  .thumb
+  push  {r4}
+  // first, look for an empty slot
+  ldr   r3, =IW.sfx
+  .script
+    var maxSfxCount = lookup maxSfxCount
+    for var i: range maxSfxCount
+      put "ldrx  r4, [r3, #sfx_st.basePointer]"
+      put "cmp   r4, #0"
+      put "beq   placeSfxHere"
+      if i < maxSfxCount - 1
+        put "adds  r3, #sfx_st._bytes"
+      end
+    end
+  .end
+  // oh no, nothing empty... so find something to stomp
+  ldr   r3, =IW.sfx
+  .script
+    var maxSfxCount = lookup maxSfxCount
+    for var i: range maxSfxCount
+      put "ldrx  r4, [r3, #sfx_st.priority]"
+      put "cmp   r4, r2"
+      put "bge   placeSfxHere"
+      if i < maxSfxCount - 1
+        put "adds  r3, #sfx_st._bytes"
+      end
+    end
+  .end
+  // can't find anything :-(
+  pop   {r4}
+  bx    lr
+placeSfxHere:
+  strx  r0, [r3, #sfx_st.basePointer]
+  strx  r1, [r3, #sfx_st.length]
+  strx  r2, [r3, #sfx_st.priority]
+  movs  r0, #0
+  strx  r0, [r3, #sfx_st.currentPos]
+  pop   {r4}
+  bx    lr
+  .pool
+.end

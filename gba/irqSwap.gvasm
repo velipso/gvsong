@@ -6,7 +6,6 @@
 //
 
 .stdlib
-.import './config.gvasm' { IW_SOUND_BUFFER_SIZE }
 .import './main.gvasm' { IW }
 
 .begin irqSwap

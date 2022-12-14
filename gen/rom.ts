@@ -36,7 +36,10 @@ try {
 
 const mainGvasm = new URL('../gba/main.gvasm', import.meta.url).pathname;
 const make = await Deno.run({ cmd: ['gvasm', 'make', mainGvasm] });
-await make.status();
+if (!(await make.status()).success) {
+  console.error('Failed to assemble ROM');
+  Deno.exit(1);
+}
 const rom = await Deno.readFile(new URL('../gba/main.gba', import.meta.url).pathname);
 const romOutput = new URL('../cli/rom.json', import.meta.url).pathname;
 console.log(`Writing rom to: ${romOutput}`);

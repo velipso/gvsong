@@ -11,10 +11,21 @@
 
 .begin sndInit //()
   .arm
+  push  {lr}
+
   // disable interrupts during setup
   ldr   r0, =REG_IME
   ldr   r1, =0
   strb  r1, [r0]
+
+  // clear memory
+  ldr   r0, =IW
+  movs  r1, #0
+  ldr   r2, =IW + IW._bytes
+- str   r1, [r0]
+  adds  r0, #4
+  cmp   r0, r2
+  blt   -
 
   // setup DISPSTAT
   ldr   r0, =REG_DISPSTAT
@@ -100,6 +111,7 @@
   ldr   r1, =0x0080
   strh  r1, [r0]
 
-  bx    lr
+  pop   {r0}
+  bx    r0
   .pool
 .end

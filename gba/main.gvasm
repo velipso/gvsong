@@ -8,17 +8,26 @@
 .stdlib
 .import './memset32.gvasm' { memset32 }
 .import './memcpy32.gvasm' { memcpy32 }
-.import './config.gvasm' { IW, song_st }
+.import './config.gvasm' { IW, song_st, bufferSize }
 .import './sndInit.gvasm' { sndInit }
 .import './sndFrame.gvasm' { sndFrame }
 .import './sndLoadSong.gvasm' { sndLoadSong }
+.import './sndPlaySfx.gvasm' { sndPlaySfx }
 
 .begin INP
-  .def MASK_D             = 0x080
-  .def MASK_U             = 0x040
-  .def MASK_L             = 0x020
-  .def MASK_R             = 0x010
-  .def MASK_S             = 0x008
+  .def MASK_D = 0x080
+  .def MASK_U = 0x040
+  .def MASK_L = 0x020
+  .def MASK_R = 0x010
+  .def MASK_S = 0x008
+  .def MASK_E = 0x004
+.end
+
+.struct G = IW.end
+  .i8 volumeStr[8]
+  .i8 sequenceStr[8]
+  .align 4
+end:
 .end
 
 // GBA header
@@ -37,7 +46,7 @@
 .pool
 .align 4
 .begin iwramStart
-  .base IW.end
+  .base G.end
   .arm
   .include './irqSwap.gvasm'
   .include './sndFrame.gvasm'
@@ -47,6 +56,7 @@
   .include './irqHop.gvasm'
   .include './sndInit.gvasm'
   .pool
+  .align 4
 .end
 iwramEnd:
 .align 4
@@ -80,22 +90,28 @@ iwramEnd:
   bl    memset32
 
   // copy over IWRAM functions
-  ldr   r0, =IW.end
+  ldr   r0, =G.end
   ldr   r1, =iwramStart
   ldr   r2, =iwramEnd - iwramStart
   bl    memcpy32
 
-  // initialize volume and load sequence 0
-  ldr   r0, =IW.masterVolume
-  movs  r1, #16
-  strx  r1, [r0] (IW.masterVolume)
+  // initialize sound + IRQ
+  ldr   r0, =sndInit
+  bl    bx_r0
+
+  // load sequence 0
   ldr   r0, =songBasePointerEOF
   movs  r1, #0
   bl    sndLoadSong
 
-  // initialize sound + IRQ
-  ldr   r0, =sndInit
-  bl    bx_r0
+  // initialize volume
+  movs  r1, #16
+  ldr   r0, =IW.masterVolume
+  strx  r1, [r0] (IW.masterVolume)
+  ldr   r0, =IW.musicVolume
+  strx  r1, [r0] (IW.musicVolume)
+  ldr   r0, =IW.sfxVolume
+  strx  r1, [r0] (IW.sfxVolume)
 
   // setup bg0
   ldr   r0, =REG_BG0CNT
@@ -170,7 +186,7 @@ iwramEnd:
     swi   5
 
     // print volume
-    ldr   r0, =IW.volumeStr
+    ldr   r0, =G.volumeStr
     movs  r1, #60
     strb  r1, [r0, #0]
     movs  r1, #32
@@ -182,13 +198,13 @@ iwramEnd:
     strb  r1, [r0, #6]
     strb  r1, [r0, #7]
     adds  r0, #2
-    ldr   r1, =IW.masterVolume
-    ldrx  r1, [r1] (IW.masterVolume)
+    ldr   r1, =IW.musicVolume
+    ldrx  r1, [r1] (IW.musicVolume)
     bl    printByte
 
     ldr   r0, =16
     ldr   r1, =9
-    ldr   r2, =IW.volumeStr
+    ldr   r2, =G.volumeStr
     movs  r3, #0
     cmp   r4, #0
     beq   +
@@ -196,7 +212,7 @@ iwramEnd:
 +   bl    printString
 
     // print sequence
-    ldr   r0, =IW.sequenceStr
+    ldr   r0, =G.sequenceStr
     movs  r1, #60
     strb  r1, [r0, #0]
     movs  r1, #32
@@ -214,7 +230,7 @@ iwramEnd:
 
     ldr   r0, =16
     ldr   r1, =11
-    ldr   r2, =IW.sequenceStr
+    ldr   r2, =G.sequenceStr
     movs  r3, #0
     cmp   r4, #1
     beq   +
@@ -254,6 +270,9 @@ iwramEnd:
     movs  r0, #INP.MASK_S
     ands  r0, r1
     bne   hitStart
+    movs  r0, #INP.MASK_E
+    ands  r0, r1
+    bne   hitSelect
     b     nextFrame
 hitUp:
     movs  r4, #0
@@ -275,12 +294,12 @@ hitLeft:
     bl    sndLoadSong
     b     nextFrame
 volumeDown:
-    ldr   r0, =IW.masterVolume
-    ldrx  r1, [r0] (IW.masterVolume)
+    ldr   r0, =IW.musicVolume
+    ldrx  r1, [r0] (IW.musicVolume)
     cmp   r1, #0
     ble   nextFrame
     subs  r1, #1
-    strx  r1, [r0] (IW.masterVolume)
+    strx  r1, [r0] (IW.musicVolume)
     b     nextFrame
 hitRight:
     cmp   r4, #0
@@ -298,12 +317,12 @@ hitRight:
     bl    sndLoadSong
     b     nextFrame
 volumeUp:
-    ldr   r0, =IW.masterVolume
-    ldrx  r1, [r0] (IW.masterVolume)
+    ldr   r0, =IW.musicVolume
+    ldrx  r1, [r0] (IW.musicVolume)
     cmp   r1, #16
     bge   nextFrame
     adds  r1, #1
-    strx  r1, [r0] (IW.masterVolume)
+    strx  r1, [r0] (IW.musicVolume)
     b     nextFrame
 hitStart:
     // restart sequence
@@ -312,6 +331,12 @@ hitStart:
     ldr   r1, =IW.synth.sequence
     ldrx  r1, [r1] (IW.synth.sequence)
     bl    sndLoadSong
+    b     nextFrame
+hitSelect:
+    ldr   r0, =sfxRaw
+    ldr   r1, =sfxRawEnd - sfxRaw
+    movs  r2, #0
+    bl    sndPlaySfx
     b     nextFrame
   .end
   .pool
@@ -409,6 +434,13 @@ tileData:
 .include './memset32.gvasm'
 .include './sndTables.gvasm'
 .include './sndLoadSong.gvasm'
+.include './sndPlaySfx.gvasm'
+
+.align bufferSize
+sfxRaw:
+.embed './sfx.raw'
+.align bufferSize
+sfxRawEnd:
 
 .align 1024
 songMessages:

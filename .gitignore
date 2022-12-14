@@ -4,6 +4,7 @@
 demo/*.wav
 demo/*.png
 gen/*.wav
+gba/*.wav
 
 # random crap that tends to appear over time
 Thumbs.db
