@@ -24,7 +24,8 @@
 
 .begin sndPlaySfx //(sampleBasePointer, byteLength, priority)
   .thumb
-  push  {r4}
+  push  {r4-r6}
+
   // first, look for an empty slot
   ldr   r3, =IW.sfx
   .script
@@ -38,29 +39,52 @@
       end
     end
   .end
-  // oh no, nothing empty... so find something to stomp
-  ldr   r3, =IW.sfx
+
+  // oh no, nothing empty... so find the slot with the highest
+  // priority value to potentially stomp
   .script
     var maxSfxCount = lookup maxSfxCount
     for var i: range maxSfxCount
-      put "ldrx  r4, [r3, #sfx_st.priority]"
-      put "cmp   r4, r2"
-      put "bge   placeSfxHere"
-      if i < maxSfxCount - 1
-        put "adds  r3, #sfx_st._bytes"
+      if i == 0
+        // just load the first entry as the best choice
+        // r3 = best SFX pointer
+        // r4 = best priority
+        put "ldr   r3, =IW.sfx"
+        put "ldrx  r4, [r3, #sfx_st.priority]"
+        if i < maxSfxCount - 1
+          put "movs  r5, r3"
+          put "adds  r5, #sfx_st._bytes"
+        end
+      else
+        // see if the next slot is better than the best so far
+        put "ldrx  r6, [r5, #sfx_st.priority]"
+        put "cmp   r6, r4"
+        put "blt   +"
+        // it is better! so save it to r3/r4
+        put "movs  r3, r5"
+        put "movs  r4, r6"
+        put "+"
+        if i < maxSfxCount - 1
+          put "adds  r5, #sfx_st._bytes"
+        end
       end
     end
   .end
+  // see if the current sfx should stomp the best slot
+  cmp   r4, r2
+  bge   placeSfxHere
+
   // can't find anything :-(
-  pop   {r4}
+  pop   {r4-r6}
   bx    lr
+
 placeSfxHere:
   strx  r0, [r3, #sfx_st.basePointer]
   strx  r1, [r3, #sfx_st.length]
   strx  r2, [r3, #sfx_st.priority]
   movs  r0, #0
   strx  r0, [r3, #sfx_st.currentPos]
-  pop   {r4}
+  pop   {r4-r6}
   bx    lr
   .pool
 .end

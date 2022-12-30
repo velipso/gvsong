@@ -3,5 +3,9 @@
   { "name": "kick1", "offset": 0, "size": 4256 },
   { "name": "snare1", "offset": 4256, "size": 5472 },
   { "name": "kick2", "offset": 9728, "size": 5472 },
-  { "name": "snare2", "offset": 15200, "size": 7296 }
+  { "name": "snare2", "offset": 15200, "size": 7296 },
+  { "name": "kick3", "offset": 22496, "size": 9120 },
+  { "name": "hatopen1", "offset": 31616, "size": 13984 },
+  { "name": "hatclosed1", "offset": 45600, "size": 7296 },
+  { "name": "snare3", "offset": 52896, "size": 4256 }
 ]
