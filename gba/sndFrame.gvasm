@@ -487,6 +487,9 @@ checkPcmSize:
     b     continue
 
 released:
+    ldrx  t1, [channelPointer, #channel_st.instBasePointer]
+    cmp   t1, #1
+    beq   muteNote
     // advance volume envelope until it runs off
     ldrx  t0, [channelPointer, #channel_st.envVolumeIndex]
     adds  t0, #1

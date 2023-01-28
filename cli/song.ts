@@ -953,7 +953,7 @@ export class Song {
           const instruction = this.patterns[player.patIndex][player.rowIndex].commands[ch];
 
           // apply effect
-          const effect = (instruction >> 13);
+          const effect = instruction >> 13;
           const payload = (instruction >> 7) & 0x3f;
           const note = instruction & 0x7f;
           let didBend = false;
