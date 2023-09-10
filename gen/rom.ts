@@ -11,11 +11,14 @@
 //
 
 try {
-  const gv = await Deno.run({ cmd: ['gvasm', '--version'], stdout: 'piped', stderr: 'piped' });
-  if (!(await gv.status()).success) {
+  const gvCmd = new Deno.Command('gvasm', {
+    args: ['--version'],
+  });
+  const gv = await gvCmd.output();
+  if (!gv.success) {
     throw '`gvasm --version` failed to execute';
   }
-  const output = new TextDecoder().decode(await gv.output()).match(/Version: (\d+)\.\d+\.\d+\b/);
+  const output = new TextDecoder().decode(gv.stdout).match(/Version: (\d+)\.\d+\.\d+\b/);
   if (!output) {
     throw '`gvasm --version` did not report a version';
   }
@@ -35,8 +38,11 @@ try {
 }
 
 const mainGvasm = new URL('../gba/main.gvasm', import.meta.url).pathname;
-const make = await Deno.run({ cmd: ['gvasm', 'make', mainGvasm] });
-if (!(await make.status()).success) {
+const makeCmd = new Deno.Command('gvasm', {
+  args: ['make', mainGvasm],
+});
+const make = await makeCmd.output();
+if (!make.success) {
   console.error('Failed to assemble ROM');
   Deno.exit(1);
 }

@@ -1,0 +1,51 @@
+//
+// gvirq - General purpose IRQ handler for GBA homebrew in assembly
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvirq
+// SPDX-License-Identifier: 0BSD
+//
+
+// change the location of where the IRQ handlers are stored
+.struct IRQHandler = 0x03001000
+  .u32 vblank
+  .u32 hblank
+  .u32 vcount
+  .u32 timer0
+  .u32 timer1
+  .u32 timer2
+  .u32 timer3
+  .u32 serial
+  .u32 dma0
+  .u32 dma1
+  .u32 dma2
+  .u32 dma3
+  .u32 keypad
+  .u32 gamepak
+end:
+.end
+
+.script
+  enum vblank, hblank, vcount, timer0, timer1, timer2, timer3,
+    serial, dma0, dma1, dma2, dma3, keypad, gamepak
+
+  // change the priority of IRQ processing, or comment out handlers
+  // that will never be used
+  export IRQPriority = {
+    // highest priority
+    hblank,
+    vcount,
+    vblank,
+    timer0,
+    timer1,
+    timer2,
+    timer3,
+    serial,
+    dma0,
+    dma1,
+    dma2,
+    dma3,
+    keypad,
+    gamepak
+    // lowest priority
+  }
+.end

@@ -115,7 +115,7 @@ const cliDataOutput = new URL('../cli/pcm-data.json', import.meta.url).pathname;
 console.log(`Writing data to: ${cliDataOutput}`);
 await Deno.writeTextFile(cliDataOutput, JSON.stringify(waves));
 
-const gbaMetaOutput = new URL('../gba/pcm-meta.json', import.meta.url).pathname;
+const gbaMetaOutput = new URL('../gba/src/pcm-meta.json', import.meta.url).pathname;
 console.log(`Writing meta to: ${gbaMetaOutput}`);
 await Deno.writeTextFile(
   gbaMetaOutput,
@@ -128,6 +128,6 @@ for (const v of waves) {
   wavesBytes.push(v3 & 0xff);
   wavesBytes.push((v3 >> 8) & 0xff);
 }
-const gbaDataOutput = new URL('../gba/pcm-data.bin', import.meta.url).pathname;
+const gbaDataOutput = new URL('../gba/src/pcm-data.bin', import.meta.url).pathname;
 console.log(`Writing data to: ${gbaDataOutput}`);
 await Deno.writeFile(gbaDataOutput, new Uint8Array(wavesBytes));

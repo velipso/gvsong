@@ -1,0 +1,149 @@
+//
+// gvirq - General purpose IRQ handler for GBA homebrew in assembly
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvirq
+// SPDX-License-Identifier: 0BSD
+//
+
+.import './config.gvasm' { IRQHandler, IRQPriority }
+
+// heavily inspired from libugba:
+// https://github.com/AntonioND/libugba/blob/1664d3aa6d721352c5dfe2c83fffb8205ccb5212/source/gba/irq_handler.s
+.begin irqHandler
+  .arm
+  // offsets relative to 0x04000000
+  .def IE     = 0x200
+  .def IF     = 0x202
+  .def IFBIOS = -8    // mirrored at 0x03fffff8
+  .def IME    = 0x208
+
+  // r0 already contains 0x04000000 from the BIOS
+  // r1 = REG_IE & REG_IF
+  ldr   r1, [r0, #IE]
+  and   r1, r1, r1, lsr #16
+
+  // check interrupt handlers in priority order
+  .script
+    var priority = lookup IRQPriority
+
+    // r3 will point to the handler address
+    var lastHandler = priority[0] * 4
+    put "ldr r3, =IRQHandler + $lastHandler"
+    for var handler: priority
+      // update r3 by adding/subtracting to the next handler address
+      var diff = handler * 4 - lastHandler
+      lastHandler = handler * 4
+      if diff < 0
+        put "sub r3, #${-diff}"
+      elseif diff > 0
+        put "add r3, #$diff"
+      end
+
+      // load the IRQ mask into r2, and test it against r1
+      put "mov r2, #1 << $handler"
+      put "tst r1, r2"
+      put "bne interruptFound"
+    end
+  .end
+
+  // no interrupt handlers have to be called
+
+  // clear IF by setting it to IF
+  // (strangely, setting a bit in IF actually clears it)
+  add   r3, r0, #IF & 0xff00
+  orr   r3, #IF & 0xff
+  ldrh  r1, [r3]
+  strh  r1, [r3]
+
+  // clear IFBIOS
+  ldrh  r2, [r0, #IFBIOS]
+  orr   r2, r1
+  strh  r2, [r0, #IFBIOS]
+
+  bx    lr
+  .pool
+
+interruptFound:
+  // r0 = 0x04000000
+  // r1 = unused
+  // r2 = 1 << handler
+  // r3 = handler address
+
+  // clear IF for this handler
+  // (strangely, setting a bit in IF actually clears it)
+  add   r1, r0, #IF & 0xff00
+  orr   r1, #IF & 0xff
+  strh  r2, [r1]
+
+  // clear IFBIOS for this handler, which is mirrored at 0x03fffff8
+  ldrh  r1, [r0, #IFBIOS]
+  orr   r1, r2
+  strh  r1, [r0, #IFBIOS]
+
+  // load the handler (exit if NULL)
+  ldr   r3, [r3]
+  cmp   r3, #0
+  bxeq  lr
+
+  // we're ready to call the handler in r3
+
+  // when the IRQ is called, the CPSR.I flag is set, which disables
+  // any future interrupts... we want to clear this flag, so that
+  // interrupts can be nested
+  //
+  // in order to do that, we first need to disable interrupts using
+  // IME
+  //
+  // this gives the option to the handler to resume interrupts by
+  // setting IME (and not messing with CPSR.I)
+  //
+  // we also need to save the old IME, SPSR, and LR registers, so we
+  // can restore them, if a nested interrupt occurs
+
+  // write 0 to IME, and read the old value at the same time
+  add   r2, r0, #IME & 0xff00
+  orr   r2, #IME & 0xff
+  mov   r1, #0
+  swp   r1, r1, [r2]
+
+  // get SPSR
+  mrs   r2, spsr
+
+  // save old IME, SPSR, and LR
+  push  {r1-r2, lr}
+
+  .def MODE_IRQ    = 0x12
+  .def MODE_SYSTEM = 0x1f
+  .def MODE_MASK   = 0x1f
+  .def IRQ_DISABLE = 1 << 7
+
+  // set the CPU mode to system, which restores the user stack, and
+  // allows us to revert it later
+  mrs   r2, cpsr
+  bic   r2, #IRQ_DISABLE
+  orr   r2, #MODE_SYSTEM
+  msr   cpsr, r2
+
+  // call interrupt handler, using user stack
+  push  {lr}
+  mov   lr, pc
+  bx    r3
+  pop   {lr}
+
+  // disable interrupts while switching modes
+  mov   r0, #0x04000000
+  str   r0, [r0, #IME]
+
+  // revert CPU mode back to IRQ with interrupts disabled
+  mrs   r2, cpsr
+  bic   r2, #MODE_MASK
+  orr   r2, #MODE_IRQ | IRQ_DISABLE
+  msr   cpsr, r2
+
+  // restore IME, SPSR, and LR
+  pop   {r1-r2, lr}
+  msr   spsr, r2
+  str   r1, [r0, #IME]
+
+  bx    lr
+.end

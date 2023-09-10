@@ -1,0 +1,58 @@
+//
+// gvirq - General purpose IRQ handler for GBA homebrew in assembly
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvirq
+// SPDX-License-Identifier: 0BSD
+//
+
+.stdlib
+.import './config.gvasm' { IRQHandler }
+.import './irqHandler.gvasm' { irqHandler }
+
+.begin irqInit //()
+  .thumb
+  // disable interrupts during setup
+  ldr   r0, =REG_IME
+  movs  r1, #0
+  strb  r1, [r0]
+
+  // clear handlers
+  ldr   r0, =IRQHandler
+  str   r1, [r0, # 0] // vblank
+  str   r1, [r0, # 4] // hblank
+  str   r1, [r0, # 8] // vcount
+  str   r1, [r0, #12] // timer0
+  str   r1, [r0, #16] // timer1
+  str   r1, [r0, #20] // timer2
+  str   r1, [r0, #24] // timer3
+  str   r1, [r0, #28] // serial
+  str   r1, [r0, #32] // dma0
+  str   r1, [r0, #36] // dma1
+  str   r1, [r0, #40] // dma2
+  str   r1, [r0, #44] // dma3
+  str   r1, [r0, #48] // keypad
+  str   r1, [r0, #52] // gamepak
+
+  // set IRQ handler
+  ldr   r0, =0x03007ffc
+  ldr   r1, =irqHandler
+  str   r1, [r0]
+
+  // clear IE
+  ldr   r0, =REG_IE
+  movs  r1, #0
+  strh  r1, [r0]
+
+  // clear IF
+  ldr   r0, =REG_IF
+  ldr   r1, =0x3fff
+  strh  r1, [r0]
+
+  // enable interrupts
+  ldr   r0, =REG_IME
+  movs  r1, #1
+  strb  r1, [r0]
+
+  bx    lr
+  .pool
+.end

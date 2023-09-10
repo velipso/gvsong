@@ -2,6 +2,7 @@
 // gvsong - Builds and renders songs designed for Game Boy Advance
 // by Sean Connelly (@velipso), https://sean.cm
 // Project Home: https://github.com/velipso/gvsong
+// Based on: https://github.com/velipso/sink
 // SPDX-License-Identifier: 0BSD
 //
 // deno-lint-ignore-file camelcase
@@ -9686,8 +9687,8 @@ function oper_tri(a: val, b: val, c: val, f_trinary: trinary_f): val {
   return f_trinary(a, b, c);
 }
 
-function opihelp_num_max(vals: list | val[], li: list[]): val {
-  let max: val = NIL;
+function opihelp_num_max(vals: list | val[], li: list[]): null | number {
+  let max: null | number = NIL;
   for (let i = 0; i < vals.length; i++) {
     const v = vals[i];
     if (isnum(v)) {
@@ -9715,8 +9716,8 @@ function opi_num_max(vals: list | val[]): val {
   return opihelp_num_max(vals, []);
 }
 
-function opihelp_num_min(vals: list | val[], li: list[]): val {
-  let min: val = NIL;
+function opihelp_num_min(vals: list | val[], li: list[]): null | number {
+  let min: null | number = NIL;
   for (let i = 0; i < vals.length; i++) {
     const v = vals[i];
     if (isnum(v)) {
@@ -15651,7 +15652,7 @@ export function scr_dump(
       const str = prg.debugTable[i];
       const slen = str === null ? 4 : str.length;
       const slenb = '' +
-        String.fromCharCode((slen) & 0xFF) +
+        String.fromCharCode(slen & 0xFF) +
         String.fromCharCode((slen >> 8) & 0xFF) +
         String.fromCharCode((slen >> 16) & 0xFF) +
         String.fromCharCode((slen >> 24) & 0xFF);

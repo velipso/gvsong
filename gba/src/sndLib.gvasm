@@ -1,0 +1,461 @@
+//
+// gvsong - Builds and renders songs designed for Game Boy Advance
+// by Sean Connelly (@velipso), https://sean.cm
+// Project Home: https://github.com/velipso/gvsong
+// SPDX-License-Identifier: 0BSD
+//
+
+.stdlib
+.import './config.gvasm' {
+  IW, sampleRate, pitchDivisionBits, maxPhaseBits, maxPhaseQBits,
+  maxRndSample, maxSfxCount, channel_st, song_st, songSeq_st, sfx_st
+}
+.import './sndFrame.gvasm' { timer1Handler }
+
+.begin sndInit //(IRQHandler.timer1)
+  .arm
+  // disable interrupts during setup
+  ldr   r1, =REG_IME
+  mov   r2, #0
+  strb  r2, [r1]
+
+  // set timer1 handler
+  ldr   r1, =timer1Handler
+  str   r1, [r0]
+
+  // clear memory
+  ldr   r0, =IW
+  movs  r1, #0
+  ldr   r2, =IW + IW._bytes
+- str   r1, [r0]
+  adds  r0, #4
+  cmp   r0, r2
+  blt   -
+
+  // setup IE to enable timer1 for swapping buffers
+  ldr   r0, =REG_IE
+  ldrh  r1, [r0]
+  orrs  r1, #0x10
+  strh  r1, [r0]
+
+  // stop timer 0,1
+  ldr   r0, =REG_TM0CNT
+  ldr   r1, =0
+  strh  r1, [r0]
+  ldr   r0, =REG_TM1CNT
+  strh  r1, [r0]
+
+  // setup timer0 - drives the sample rate
+  // cpuHz      = 2^24
+  // sampleRate = 2^15
+  // timer0Wait = cpuHz / sampleRate = 2^9 = 0x200
+  // timer0Res  = 1 cycle
+  // timer0Wait / timer0Res = 0x200
+  ldr   r0, =REG_TM0D
+  ldr   r1, =0x10000 - 0x200
+  strh  r1, [r0]
+
+  // setup timer1 - drives the DMA buffer cycling
+  // bufferSize = 0x260
+  // timer1Wait = bufferSize * timer0Wait = 311296 cycles
+  // timer1Res  = 64 cycles
+  // timer1Wait / timer1Res = 0x1300
+  ldr   r0, =REG_TM1D
+  ldr   r1, =0x10000 - 0x1300
+  strh  r1, [r0]
+
+  // enable interrupts
+  ldr   r0, =REG_IME
+  ldr   r1, =1
+  strb  r1, [r0]
+
+  // turn sound chip on
+  ldr   r0, =REG_SOUNDCNT_X
+  ldr   r1, =0x0080
+  strh  r1, [r0]
+
+  // set sound to use FIFO A
+  ldr   r0, =REG_SOUNDCNT_H
+  ldr   r1, =0x0b0f
+  strh  r1, [r0]
+
+  // set DMA1 destination to FIFO A
+  ldr   r0, =REG_DMA1DAD
+  ldr   r1, =REG_FIFO_A
+  str   r1, [r0]
+
+  // point DMAs to buffers
+  ldr   r0, =REG_DMA1SAD
+  ldr   r1, =IW.buffer1
+  str   r1, [r0]
+
+  // enable DMA1
+  ldr   r0, =REG_DMA1CNT_H
+  ldr   r1, =0xb640
+  strh  r1, [r0]
+
+  // save alt buffers for next render
+  ldr   r0, =IW.bufferAddr[0]
+  ldr   r1, =IW.buffer1
+  str   r1, [r0, #0]
+  ldr   r1, =IW.buffer2
+  str   r1, [r0, #4]
+  ldr   r1, =IW.buffer3
+  str   r1, [r0, #8]
+  ldr   r0, =IW.nextBufferIndex
+  movs  r1, #4
+  str   r1, [r0]
+
+  // start timer0
+  ldr   r0, =REG_TM0CNT
+  ldr   r1, =0x0080
+  strh  r1, [r0]
+
+  // start timer1
+  ldr   r0, =REG_TM1CNT
+  ldr   r1, =0x00c1
+  strh  r1, [r0]
+
+  bx    lr
+  .pool
+.end
+
+.begin sndLoadSong //(songBasePointer, sequence)
+  .thumb
+  push  {lr}
+
+  // zero out synth
+  push  {r0-r1}
+  ldr   r0, =IW.synth
+  movs  r1, #0
+  ldr   r2, =IW.synth + IW.synth._bytes
+- str   r1, [r0]
+  adds  r0, #4
+  cmp   r0, r2
+  blt   -
+  pop   {r2-r3}
+
+  .regs t0-t1, songBase, sequence, r4-r11
+
+  // save songBase + sequence
+  ldr   t0, =IW.synth.songBasePointer
+  strx  songBase, [t0] (IW.synth.songBasePointer)
+  ldr   t0, =IW.synth.sequence
+  strx  sequence, [t0] (IW.synth.sequence)
+
+  // set pattern pointer to sequence's first pattern
+  ldrx  t0, [songBase, #song_st.seqTableOffset]
+  adds  t0, songBase
+  lsls  sequence, #2
+  ldr   sequence, [t0, sequence]
+  adds  sequence, songBase
+  ldrx  t0, [sequence, #songSeq_st.patterns]
+  lsls  t0, #2
+  ldrx  t1, [songBase, #song_st.patTableOffset]
+  adds  t1, songBase
+  adds  t1, t0
+  ldr   t0, [t1]
+  adds  t0, songBase
+  ldr   t1, =IW.synth.patPointer
+  strx  t0, [t1] (IW.synth.patPointer)
+
+  .regs t0-t1, songBase, t2, r4-r11
+
+  // set tempo to index 0
+  ldr   t1, =tempoTable
+  ldrh  t1, [t1]
+  ldr   t0, =IW.synth.tickStart
+  strx  t1, [t0] (IW.synth.tickStart)
+  ldr   t0, =IW.synth.tickLeft
+  movs  t1, #0
+  strx  t1, [t0] (IW.synth.tickLeft)
+
+  // initialize channels
+  ldr   t0, =IW.synth.channel[0]
+  ldrx  t1, [songBase, #song_st.channelCount]
+
+nextChannel:
+  // set channel volume
+  movs  t2, #32
+  strx  t2, [t0, #channel_st.chanVolume]
+
+  adds  t0, #channel_st._bytes
+  subs  t1, #1
+  bne   nextChannel
+
+  .regs r0-r11
+  pop   {r0}
+  bx    r0
+  .pool
+.end
+
+//
+// Sample requirements:
+//   Bit depth: 8
+//   Sample rate: 32768 hz
+//   Byte length: Must be a multiple of 608  **IMPORTANT**
+//
+// Priority:
+//   If all sound effect slots are taken, then a new sound effect will
+//   stomp any existing effect of equal or higher priority value.
+//
+//   For example, if something is playing at priority 2, a new sound
+//   at priority 3 cannot stomp it.  But it will stomp existing sounds
+//   at priority 3 or higher.
+//
+
+.begin sndPlaySfx //(sampleBasePointer, byteLength, priority)
+  .thumb
+  push  {r4-r6}
+
+  // first, look for an empty slot
+  ldr   r3, =IW.sfx
+  .script
+    var maxSfxCount = lookup maxSfxCount
+    for var i: range maxSfxCount
+      put "ldrx  r4, [r3, #sfx_st.basePointer]"
+      put "cmp   r4, #0"
+      put "beq   placeSfxHere"
+      if i < maxSfxCount - 1
+        put "adds  r3, #sfx_st._bytes"
+      end
+    end
+  .end
+
+  // oh no, nothing empty... so find the slot with the highest
+  // priority value to potentially stomp
+  .script
+    var maxSfxCount = lookup maxSfxCount
+    for var i: range maxSfxCount
+      if i == 0
+        // just load the first entry as the best choice
+        // r3 = best SFX pointer
+        // r4 = best priority
+        put "ldr   r3, =IW.sfx"
+        put "ldrx  r4, [r3, #sfx_st.priority]"
+        if i < maxSfxCount - 1
+          put "movs  r5, r3"
+          put "adds  r5, #sfx_st._bytes"
+        end
+      else
+        // see if the next slot is better than the best so far
+        put "ldrx  r6, [r5, #sfx_st.priority]"
+        put "cmp   r6, r4"
+        put "blt   +"
+        // it is better! so save it to r3/r4
+        put "movs  r3, r5"
+        put "movs  r4, r6"
+        put "+"
+        if i < maxSfxCount - 1
+          put "adds  r5, #sfx_st._bytes"
+        end
+      end
+    end
+  .end
+  // see if the current sfx should stomp the best slot
+  cmp   r4, r2
+  bge   placeSfxHere
+
+  // can't find anything :-(
+  pop   {r4-r6}
+  bx    lr
+
+placeSfxHere:
+  strx  r0, [r3, #sfx_st.basePointer]
+  strx  r1, [r3, #sfx_st.length]
+  strx  r2, [r3, #sfx_st.priority]
+  movs  r0, #0
+  strx  r0, [r3, #sfx_st.currentPos]
+  pop   {r4-r6}
+  bx    lr
+  .pool
+.end
+
+oscillatorTable:
+.embed './tables.bin'
+
+pcmDataTable:
+.embed './pcm-data.bin'
+
+.align 4
+pcmOffsetTable:
+.script
+  var meta = pickle.val embed './pcm-meta.json'
+  for var row: meta
+    u32 row[1] * 2
+  end
+.end
+
+pcmSizeTable:
+.script
+  var meta = pickle.val embed './pcm-meta.json'
+  for var row: meta
+    u32 row[2]
+  end
+.end
+
+tempoTable:
+.script
+  var sampleRate = lookup sampleRate
+  var d = {}
+  for var i: range 64
+    var idealTempo = (i + 18) * 10 / 4
+    var startValue = num.round sampleRate * 60 * 256 / (608 * 16 * idealTempo)
+    var actualTempo = sampleRate * 60 * 256 / (608 * 16 * startValue)
+    list.push d, startValue
+  end
+  u16 d
+.end
+
+waveTable:
+.script
+  var nextOffset = 16
+  def addInstToWaveTable totalWaves, table
+    if &table != 128
+      abort 'Bad table length'
+    end
+    for var v: table
+      if v >= totalWaves
+        abort 'Bad wave offset'
+      end
+      i16 nextOffset + v
+    end
+    nextOffset += totalWaves
+  end
+
+  // sq1-sq8
+  for var duty: range 8
+    addInstToWaveTable 10, {
+      0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+      2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+      3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+      4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+      5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+      6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+      7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+      8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+      9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9,
+    }
+  end
+
+  // tri
+  addInstToWaveTable 6, {
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+  }
+
+  // saw
+  addInstToWaveTable 7, {
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+    6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6,
+  }
+
+  // sin
+  addInstToWaveTable 1, {
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  }
+
+  // ds1
+  addInstToWaveTable 6, {
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+  }
+
+  // ds2
+  addInstToWaveTable 6, {
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+    3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+  }
+.end
+
+dphaseTable: // Q11.5
+.script
+  var sampleRate = lookup sampleRate
+  var maxPhaseQBits = lookup maxPhaseQBits
+  var maxPhaseQ = int.shl 1, maxPhaseQBits
+  var pitchDivisionBits = lookup pitchDivisionBits
+  var pitchDivision = int.shl 1, pitchDivisionBits
+  var d = {}
+  for var n: range 0x80 * pitchDivision
+    var freq = 440 * 2^(((n / pitchDivision) - 65) / 12)
+    var dphase = num.round freq * maxPhaseQ / sampleRate
+    var actualFreq = dphase * sampleRate / maxPhaseQ
+    if dphase >= 65536
+      abort 'dphaseTable overflow'
+    end
+    list.push d, dphase
+  end
+  u16 d
+.end
+
+bendTable: // Q0.16
+.script
+  var sampleRate = lookup sampleRate
+  var pitchDivisionBits = lookup pitchDivisionBits
+  var pitchDivision = 1 | int.shl pitchDivisionBits
+  var d = {}
+  for var tempo: range 64
+    var idealTempo = (tempo + 18) * 10 / 4
+    var startValue = num.round sampleRate * 60 * 256 / (608 * 16 * idealTempo)
+    var actualTempo = sampleRate * 60 * 256 / (608 * 16 * startValue)
+    var framesPer16thNote = startValue / 256
+    for var dpitchAbs: range 1, 129
+      var bendCounterMax = 65536 * framesPer16thNote / (dpitchAbs * pitchDivision)
+      bendCounterMax = num.floor bendCounterMax
+      if bendCounterMax < 0 || bendCounterMax >= 65536
+        abort 'bendTable overflow'
+      end
+      list.push d, bendCounterMax
+    end
+  end
+  u16 d
+.end
+.align 4

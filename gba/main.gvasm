@@ -6,13 +6,11 @@
 //
 
 .stdlib
-.import './memset32.gvasm' { memset32 }
-.import './memcpy32.gvasm' { memcpy32 }
-.import './config.gvasm' { IW, song_st, bufferSize }
-.import './sndInit.gvasm' { sndInit }
-.import './sndFrame.gvasm' { sndFrame }
-.import './sndLoadSong.gvasm' { sndLoadSong }
-.import './sndPlaySfx.gvasm' { sndPlaySfx }
+.import './src/config.gvasm' { IW, song_st, bufferSize }
+.import './src/sndLib.gvasm' { sndInit, sndLoadSong, sndPlaySfx }
+.import './src/sndFrame.gvasm' { sndFrame }
+.import './gvirq/irqInit.gvasm' { irqInit }
+.import './gvirq/config.gvasm' { IRQHandler }
 
 .begin INP
   .def MASK_D = 0x080
@@ -46,20 +44,15 @@ end:
 .pool
 .align 4
 .begin iwramStart
-  .base G.end
+  .def base = 0x03002000
+  .base base
   .arm
-  .include './irqSwap.gvasm'
-  .include './sndFrame.gvasm'
-  .include './delayCycle.gvasm'
-  .include './irqNone.gvasm'
-  .include './irqStartTimer.gvasm'
-  .include './irqHop.gvasm'
-  .include './sndInit.gvasm'
+  .include './src/sndFrame.gvasm'
+  .include './gvirq/irqHandler.gvasm'
   .pool
   .align 4
 .end
 iwramEnd:
-.align 4
 
 // main program
 .align 4
@@ -90,14 +83,34 @@ iwramEnd:
   bl    memset32
 
   // copy over IWRAM functions
-  ldr   r0, =G.end
+  ldr   r0, =iwramStart.base
   ldr   r1, =iwramStart
   ldr   r2, =iwramEnd - iwramStart
   bl    memcpy32
 
-  // initialize sound + IRQ
-  ldr   r0, =sndInit
-  bl    bx_r0
+  // initialize IRQ handler
+  bl    irqInit
+
+  // initialize sound
+  ldr   r0, =IRQHandler.timer1
+  ldr   r1, =sndInit
+  bl    bx_r1
+
+  // enable vblank
+  ldr   r1, =REG_IME
+  mov   r2, #0
+  strb  r2, [r1]
+  ldr   r0, =REG_DISPSTAT
+  movs  r1, #8
+  strh  r1, [r0]
+  ldr   r0, =REG_IE
+  ldrh  r1, [r0]
+  movs  r2, #1
+  orrs  r1, r2
+  strh  r1, [r0]
+  ldr   r1, =REG_IME
+  mov   r2, #1
+  strb  r2, [r1]
 
   // load sequence 0
   ldr   r0, =songBasePointerEOF
@@ -238,8 +251,8 @@ iwramEnd:
 +   bl    printString
 
     // advance sound
-    ldr   r0, =sndFrame
-    bl    bx_r0
+    ldr   r1, =sndFrame
+    bl    bx_r1
 
     // read input
     ldr   r0, =REG_KEYINPUT
@@ -342,9 +355,9 @@ hitSelect:
   .pool
 .end
 
-.begin bx_r0
+.begin bx_r1
   .thumb
-  bx    r0
+  bx    r1
 .end
 
 .begin printByte //(output, byte)
@@ -430,11 +443,98 @@ tileData:
 .end
 
 .align 4
-.include './memcpy32.gvasm'
-.include './memset32.gvasm'
-.include './sndTables.gvasm'
-.include './sndLoadSong.gvasm'
-.include './sndPlaySfx.gvasm'
+.include './src/sndLib.gvasm'
+.include './gvirq/irqInit.gvasm'
+
+.begin memcpy32 //(dest, source, byte count)
+  .thumb
+  .align 4, nop
+  bx    pc // change to ARM mode
+  nop
+arm:
+  .arm
+  subs  r2, #32
+  blt   last32
+  stmfd sp!, {r3-r10}
+chunk:
+  ldmia r1!, {r3-r10}
+  stmia r0!, {r3-r10}
+  subs  r2, #32
+  blt   done32
+  ldmia r1!, {r3-r10}
+  stmia r0!, {r3-r10}
+  subs  r2, #32
+  blt   done32
+  ldmia r1!, {r3-r10}
+  stmia r0!, {r3-r10}
+  subs  r2, #32
+  blt   done32
+  ldmia r1!, {r3-r10}
+  stmia r0!, {r3-r10}
+  subs  r2, #32
+  bge   chunk
+done32:
+  ldmfd sp!, {r3-r10}
+last32:
+  adds  r2, #32
+  bxle  lr
+last4:
+  subs  r2, #4
+  ldrge r12, [r1], #4
+  strge r12, [r0], #4
+  bgt   last4
+  bxeq  lr
+  add   r2, #4
+bytecopy:
+  ldrb  r12, [r1], #1
+  ldrb  r12, [r0], #1
+  subs  r2, #1
+  bgt   bytecopy
+  bx    lr
+  .pool
+.end
+
+.begin memset32 //(dest, data, byte count)
+  .thumb
+  .align 4, nop
+  bx    pc // change to ARM mode
+  nop
+arm:
+  .arm
+  subs  r2, #32
+  blt   last32
+  stmfd sp!, {r3-r9}
+  mov   r3, r1
+  mov   r4, r1
+  mov   r5, r1
+  mov   r6, r1
+  mov   r7, r1
+  mov   r8, r1
+  mov   r9, r1
+chunk:
+  stmia r0!, {r1, r3-r9}
+  subs  r2, #32
+  blt   done32
+  stmia r0!, {r1, r3-r9}
+  subs  r2, #32
+  blt   done32
+  stmia r0!, {r1, r3-r9}
+  subs  r2, #32
+  blt   done32
+  stmia r0!, {r1, r3-r9}
+  subs  r2, #32
+  bge   chunk
+done32:
+  ldmfd sp!, {r3-r9}
+last32:
+  adds  r2, #32
+  bxle  lr
+last4:
+  str   r1, [r0], #4
+  subs  r2, #4
+  bgt   last4
+  bx    lr
+.end
 
 .align bufferSize
 sfxRaw:

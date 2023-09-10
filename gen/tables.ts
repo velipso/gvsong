@@ -147,6 +147,6 @@ for (const v of waves) {
   wavesBytes.push(v3 & 0xff);
   wavesBytes.push((v3 >> 8) & 0xff);
 }
-const gbaOutput = new URL('../gba/tables.bin', import.meta.url).pathname;
+const gbaOutput = new URL('../gba/src/tables.bin', import.meta.url).pathname;
 console.log(`Writing tables to: ${gbaOutput}`);
 await Deno.writeFile(gbaOutput, new Uint8Array(wavesBytes));
