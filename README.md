@@ -16,7 +16,7 @@ Then run:
 deno upgrade
 
 # install the latest release of gvsong
-deno install --allow-read --allow-write -f -r \
+deno install -g --allow-read --allow-write -f -r \
   https://raw.githubusercontent.com/velipso/gvsong/main/gvsong.ts
 ```
 
