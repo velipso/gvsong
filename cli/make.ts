@@ -1,6 +1,6 @@
 //
 // gvsong - Builds and renders songs designed for Game Boy Advance
-// by Sean Connelly (@velipso), https://sean.cm
+// by Sean Connelly (@velipso), https://sean.fun
 // Project Home: https://github.com/velipso/gvsong
 // SPDX-License-Identifier: 0BSD
 //
